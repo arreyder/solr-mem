@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<schema name="memories" version="1.6">
+
+  <!-- Field Types -->
+  <fieldType name="string" class="solr.StrField" sortMissingLast="true" docValues="true" />
+  <fieldType name="strings" class="solr.StrField" sortMissingLast="true" multiValued="true" docValues="true" />
+  <fieldType name="plong" class="solr.LongPointField" docValues="true" />
+  <fieldType name="pfloat" class="solr.FloatPointField" docValues="true" />
+  <fieldType name="pdate" class="solr.DatePointField" docValues="true" />
+  <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true" />
+
+  <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.StopFilterFactory" ignoreCase="true" words="stopwords.txt" />
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.StopFilterFactory" ignoreCase="true" words="stopwords.txt" />
+      <filter class="solr.SynonymGraphFilterFactory" synonyms="synonyms.txt" ignoreCase="true" expand="true"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+  </fieldType>
+
+  <!-- Unique Key -->
+  <uniqueKey>id</uniqueKey>
+
+  <!-- Fields -->
+  <field name="id" type="string" indexed="true" stored="true" required="true" />
+  <field name="_version_" type="plong" indexed="true" stored="true" />
+
+  <!-- Memory fields -->
+  <field name="agent_id" type="string" indexed="true" stored="true" />
+  <field name="memory_type" type="string" indexed="true" stored="true" />
+  <field name="content" type="text_general" indexed="true" stored="true" />
+  <field name="title" type="text_general" indexed="true" stored="true" />
+  <field name="tags" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="source" type="string" indexed="true" stored="true" />
+  <field name="importance" type="pfloat" indexed="true" stored="true" default="0.5" />
+  <field name="metadata" type="text_general" indexed="true" stored="true" />
+  <field name="created_at" type="pdate" indexed="true" stored="true" />
+  <field name="updated_at" type="pdate" indexed="true" stored="true" />
+  <field name="expires_at" type="pdate" indexed="true" stored="true" />
+  <field name="lifetime" type="string" indexed="true" stored="true" default="permanent" />
+  <field name="session_id" type="string" indexed="true" stored="true" />
+  <field name="related_ids" type="strings" indexed="true" stored="true" multiValued="true" />
+
+</schema>

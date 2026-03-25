@@ -1,0 +1,11 @@
+# Synonyms for AI memory context
+remember,recall,recollect
+store,save,persist
+search,find,lookup,query
+delete,remove,erase
+update,modify,change,edit
+memory,recollection,knowledge
+task,todo,action,item
+observation,note,finding
+reflection,thought,insight
+decision,choice,determination

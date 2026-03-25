@@ -1,0 +1,27 @@
+# Binaries
+bin/
+solr-mem-server
+
+# Go
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Solr data (managed by Docker volume)
+solr-data/
