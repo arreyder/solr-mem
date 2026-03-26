@@ -41,6 +41,9 @@ func updateMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 	if v := getStringSlice(args, "related_ids"); len(v) > 0 {
 		fields["related_ids"] = v
 	}
+	if v := getString(args, "format"); v != "" {
+		fields["format"] = v
+	}
 
 	// Handle lifetime changes — recalculate expires_at
 	if v := getString(args, "lifetime"); v != "" {

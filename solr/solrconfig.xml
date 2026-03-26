@@ -55,6 +55,7 @@
       <str name="facet.field">source</str>
       <str name="facet.field">lifetime</str>
       <str name="facet.field">session_id</str>
+      <str name="facet.field">format</str>
       <str name="facet.mincount">1</str>
     </lst>
   </requestHandler>

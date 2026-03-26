@@ -44,6 +44,11 @@ func bulkStoreMemoriesTool(ctx context.Context, args map[string]any) (any, error
 		id := uuid.New().String()
 		ids = append(ids, id)
 
+		format := getString(m, "format")
+		if format == "" {
+			format = "prose"
+		}
+
 		docs = append(docs, solr.Document{
 			ID:         id,
 			AgentID:    getString(m, "agent_id"),
@@ -60,6 +65,7 @@ func bulkStoreMemoriesTool(ctx context.Context, args map[string]any) (any, error
 			Lifetime:   lifetime,
 			SessionID:  getString(m, "session_id"),
 			RelatedIDs: getStringSlice(m, "related_ids"),
+			Format:     format,
 		})
 	}
 

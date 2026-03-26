@@ -41,7 +41,7 @@ func newServer() *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    "solr-mem",
 		Title:   "Solr Memory Store",
-		Version: "0.2.0",
+		Version: "0.3.0",
 	}, &mcp.ServerOptions{
 		Instructions: `AI agent memory store backed by Apache Solr. Provides tools to store, search, update, delete, and list memories with full-text search, highlighting, faceting, and similarity matching.
 
@@ -49,7 +49,35 @@ Memories default to permanent lifetime. Use lifetime parameter to control persis
 - permanent: never expires (default)
 - session: tied to a session, cleaned up when session ends
 - ephemeral: auto-expires after 1 hour
-- temporary: auto-expires after 7 days`,
+- temporary: auto-expires after 7 days
+
+## Content Format Guidance
+
+Store memories in compact structured formats to maximize token efficiency for both storage and retrieval. Prefer YAML or key-value pairs over prose paragraphs.
+
+Good (structured, scannable, compact):
+` + "```" + `yaml
+issue: GetOneGSI1 uses strong consistency (all GSI scans already use weak)
+file: pkg/db/db.go:685
+fix: add WithWeakConsistency()
+effort: trivial
+volume: 1852_calls/hr
+savings: 50pct_RCU
+risk: very_low
+tags: [bug, consistency, gsi]
+` + "```" + `
+
+Bad (verbose prose, wastes tokens):
+"The GetOneGSI1 function in the database package uses strong consistency reads, which is inconsistent with all other GSI scan operations that already use weak consistency. This is a bug that should be fixed by adding the WithWeakConsistency option. The effort required is trivial and the risk is very low."
+
+Guidelines:
+- Use YAML, tables, or key-value format for structured findings
+- Put the most important info in title (searched with 2x boost)
+- Use tags liberally (searched with 1.5x boost, filterable)
+- Use metadata field for machine-readable JSON (e.g. file paths, line numbers, metrics)
+- Reserve prose for context that cannot be expressed as key-value pairs
+- One memory per discrete finding; use relate_memories to link them
+- Use bulk_store_memories when storing multiple findings at once`,
 	})
 
 	for _, def := range ToolSchemas() {

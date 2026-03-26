@@ -28,7 +28,9 @@ func ToolSchemas() []ToolDefinition {
 **Required**: content (the memory text)
 **Optional**: agent_id, memory_type, title, tags, source, importance, metadata, lifetime, session_id, related_ids, expires_at
 
-**Lifetime values**: permanent (default, never expires), session (cleaned up with session), ephemeral (1 hour TTL), temporary (7 day TTL)`,
+**Lifetime values**: permanent (default, never expires), session (cleaned up with session), ephemeral (1 hour TTL), temporary (7 day TTL)
+
+**Content format**: Use compact structured formats (YAML, key-value, tables) over prose. Put searchable summary in title, machine-readable data in metadata (JSON), and categorization in tags. See server instructions for examples.`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"content":     prop("string", "The main text content of the memory (required)"),
 					"agent_id":    prop("string", "ID of the agent storing this memory"),
@@ -42,6 +44,7 @@ func ToolSchemas() []ToolDefinition {
 					"session_id":  prop("string", "Session/conversation ID to group memories"),
 					"related_ids": arrayPropSchema(prop("string", "ID"), "IDs of related memories"),
 					"expires_at":  prop("string", "Explicit expiration date (ISO 8601). Overrides lifetime."),
+					"format":      prop("string", "Content format: yaml, markdown, json, table, prose (default: prose). Helps agents choose parsing strategy."),
 				}, "content"),
 			},
 			Handler: storeMemoryTool,
@@ -81,7 +84,7 @@ func ToolSchemas() []ToolDefinition {
 **When to use**: Modify a memory's content, tags, importance, or other fields. Only specified fields are changed. Changing lifetime recalculates expires_at.
 
 **Required**: id
-**Optional**: content, title, memory_type, tags, source, importance, metadata, lifetime, session_id, related_ids, expires_at`,
+**Optional**: content, title, memory_type, tags, source, importance, metadata, lifetime, session_id, related_ids, expires_at, format`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"id":          prop("string", "The memory ID to update (required)"),
 					"content":     prop("string", "New content text"),
@@ -95,6 +98,7 @@ func ToolSchemas() []ToolDefinition {
 					"session_id":  prop("string", "New session ID"),
 					"related_ids": arrayPropSchema(prop("string", "ID"), "New related memory IDs (replaces existing)"),
 					"expires_at":  prop("string", "New expiration date (ISO 8601)"),
+					"format":      prop("string", "New content format: yaml, markdown, json, table, prose"),
 				}, "id"),
 			},
 			Handler: updateMemoryTool,
@@ -187,6 +191,7 @@ func ToolSchemas() []ToolDefinition {
 							"session_id":  prop("string", "Session ID"),
 							"related_ids": arrayPropSchema(prop("string", "ID"), "Related IDs"),
 							"expires_at":  prop("string", "Expiration (ISO 8601)"),
+							"format":      prop("string", "Content format: yaml, markdown, json, table, prose"),
 						}, "content"),
 						"Array of memory objects to store",
 					),

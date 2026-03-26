@@ -19,6 +19,11 @@ func storeMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 	expiresAt := resolveExpiration(lifetime, getString(args, "expires_at"))
 
 	now := time.Now().UTC()
+	format := getString(args, "format")
+	if format == "" {
+		format = "prose"
+	}
+
 	doc := solr.Document{
 		ID:         uuid.New().String(),
 		AgentID:    getString(args, "agent_id"),
@@ -35,6 +40,7 @@ func storeMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 		Lifetime:   lifetime,
 		SessionID:  getString(args, "session_id"),
 		RelatedIDs: getStringSlice(args, "related_ids"),
+		Format:     format,
 	}
 
 	if err := solrClient.Add(ctx, doc); err != nil {
