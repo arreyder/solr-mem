@@ -1,0 +1,14 @@
+[Unit]
+Description=Solr Memory MCP Server
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+ExecStart=/home/arreyder/repos/solr-mem/bin/solr-mem-server --http :8080
+Environment=SOLR_URL=http://pax89.local:8983/solr/memories
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

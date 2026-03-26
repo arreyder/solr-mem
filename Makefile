@@ -1,4 +1,4 @@
-.PHONY: build install test tidy run dev up down logs reset docker-build docker-up config
+.PHONY: build install test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall
 
 # Go targets
 build:
@@ -42,6 +42,18 @@ docker-build:
 
 docker-up:
 	docker compose --profile network up -d
+
+# Systemd user service
+systemd-install: build
+	mkdir -p ~/.config/systemd/user
+	cp solr-mem-server.service ~/.config/systemd/user/
+	systemctl --user daemon-reload
+	systemctl --user enable --now solr-mem-server.service
+
+systemd-uninstall:
+	systemctl --user disable --now solr-mem-server.service || true
+	rm -f ~/.config/systemd/user/solr-mem-server.service
+	systemctl --user daemon-reload
 
 # Print Claude Code MCP config
 config:

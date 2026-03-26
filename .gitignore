@@ -1,6 +1,6 @@
 # Binaries
 bin/
-solr-mem-server
+/solr-mem-server
 
 # Go
 vendor/
