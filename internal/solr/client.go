@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -46,8 +48,18 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Add indexes one or more documents into Solr.
+// Add indexes one or more memory documents into Solr.
 func (c *Client) Add(ctx context.Context, docs ...Document) error {
+	return c.AddJSON(ctx, docs)
+}
+
+// AddCode indexes one or more code documents into Solr.
+func (c *Client) AddCode(ctx context.Context, docs ...CodeDocument) error {
+	return c.AddJSON(ctx, docs)
+}
+
+// AddJSON indexes any JSON-serializable slice of documents into Solr.
+func (c *Client) AddJSON(ctx context.Context, docs any) error {
 	body, err := json.Marshal(docs)
 	if err != nil {
 		return fmt.Errorf("marshal docs: %w", err)
@@ -210,6 +222,47 @@ func (c *Client) DeleteByQuery(ctx context.Context, query string) error {
 	defer resp.Body.Close()
 
 	return c.checkResponse(resp)
+}
+
+// EnsureCollection creates the Solr collection if it doesn't already exist.
+// It uses the configDir to upload the schema/config files.
+// baseURL should be like "http://host:8983/solr/code" — the collection name is extracted from the path.
+func (c *Client) EnsureCollection(ctx context.Context, configDir string) error {
+	// Check if collection already exists via ping
+	if err := c.Ping(ctx); err == nil {
+		return nil // already exists
+	}
+
+	// Extract Solr base URL and collection name from baseURL
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("parse base URL: %w", err)
+	}
+	collection := path.Base(u.Path)
+	solrBase := strings.TrimSuffix(c.baseURL, "/solr/"+collection)
+
+	// Create collection using the Solr ConfigSet API + Collections API
+	// First, try creating via the core admin API (standalone mode, not SolrCloud)
+	createURL := fmt.Sprintf("%s/solr/admin/cores?action=CREATE&name=%s&instanceDir=%s&configSet=%s",
+		solrBase, collection, collection, collection)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, createURL, nil)
+	if err != nil {
+		return fmt.Errorf("create collection request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("create collection: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("create collection %s failed (%d): %s", collection, resp.StatusCode, body)
 }
 
 func (c *Client) checkResponse(resp *http.Response) error {
