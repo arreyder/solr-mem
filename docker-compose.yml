@@ -10,6 +10,8 @@ services:
       - ./solr/stopwords.txt:/opt/solr/server/solr/configsets/memories/conf/stopwords.txt
       - ./solr/synonyms.txt:/opt/solr/server/solr/configsets/memories/conf/synonyms.txt
       - solr_data:/var/solr
+    environment:
+      SOLR_JAVA_MEM: "-Xms1g -Xmx4g"
     command: ["solr-precreate", "memories", "/opt/solr/server/solr/configsets/memories"]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8983/solr/memories/admin/ping | grep -q OK"]
@@ -26,6 +28,7 @@ services:
       - "0.0.0.0:8080:8080"
     environment:
       SOLR_URL: "http://solr:8983/solr/memories"
+      SOLR_URL_CODE: "http://solr:8983/solr/code"
     depends_on:
       solr:
         condition: service_healthy

@@ -13,6 +13,7 @@ import (
 )
 
 var solrClient *solr.Client
+var codeClient *solr.Client
 
 func main() {
 	solrURL := os.Getenv("SOLR_URL")
@@ -20,6 +21,12 @@ func main() {
 		solrURL = "http://pax89.local:8983/solr/memories"
 	}
 	solrClient = solr.NewClient(solrURL)
+
+	codeURL := os.Getenv("SOLR_URL_CODE")
+	if codeURL == "" {
+		codeURL = "http://pax89.local:8983/solr/code"
+	}
+	codeClient = solr.NewClient(codeURL)
 
 	// Start expiration sweeper
 	ctx, cancel := context.WithCancel(context.Background())

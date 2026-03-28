@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<schema name="code" version="1.6">
+
+  <!-- Field Types -->
+  <fieldType name="string" class="solr.StrField" sortMissingLast="true" docValues="true" />
+  <fieldType name="strings" class="solr.StrField" sortMissingLast="true" multiValued="true" docValues="true" />
+  <fieldType name="plong" class="solr.LongPointField" docValues="true" />
+  <fieldType name="pint" class="solr.IntPointField" docValues="true" />
+  <fieldType name="pfloat" class="solr.FloatPointField" docValues="true" />
+  <fieldType name="pdate" class="solr.DatePointField" docValues="true" />
+
+  <!-- Code-aware text analysis: no stop words (if/for/return are meaningful in code), preserveOriginal for exact matches -->
+  <fieldType name="text_code" class="solr.TextField" positionIncrementGap="100">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.WordDelimiterGraphFilterFactory"
+              generateWordParts="1" generateNumberParts="1"
+              catenateWords="1" catenateNumbers="0"
+              splitOnCaseChange="1" splitOnNumerics="1"
+              preserveOriginal="1"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.WordDelimiterGraphFilterFactory"
+              generateWordParts="1" generateNumberParts="1"
+              catenateWords="0" catenateNumbers="0"
+              splitOnCaseChange="1" splitOnNumerics="1"
+              preserveOriginal="1"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+    </analyzer>
+  </fieldType>
+
+  <!-- Unique Key -->
+  <uniqueKey>id</uniqueKey>
+
+  <!-- Core fields -->
+  <field name="id" type="string" indexed="true" stored="true" required="true" />
+  <field name="_version_" type="plong" indexed="true" stored="true" />
+
+  <!-- Content fields -->
+  <field name="content" type="text_code" indexed="true" stored="true" />
+  <field name="title" type="text_code" indexed="true" stored="true" />
+  <field name="tags" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="metadata" type="string" indexed="false" stored="true" />
+  <field name="format" type="string" indexed="true" stored="true" default="yaml" />
+  <field name="importance" type="pfloat" indexed="true" stored="true" default="0.5" />
+  <field name="related_ids" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="created_at" type="pdate" indexed="true" stored="true" />
+  <field name="updated_at" type="pdate" indexed="true" stored="true" />
+
+  <!-- Repository fields -->
+  <field name="repo_url" type="string" indexed="true" stored="true" />
+  <field name="repo_id" type="string" indexed="true" stored="true" />
+
+  <!-- Hierarchy fields -->
+  <field name="doc_level" type="string" indexed="true" stored="true" />
+  <field name="parent_id" type="string" indexed="true" stored="true" />
+
+  <!-- File fields -->
+  <field name="file_path" type="string" indexed="true" stored="true" />
+  <field name="language" type="string" indexed="true" stored="true" />
+  <field name="commit_sha" type="string" indexed="true" stored="true" />
+
+  <!-- Symbol fields -->
+  <field name="symbol_name" type="text_code" indexed="true" stored="true" />
+  <field name="symbol_name_exact" type="string" indexed="true" stored="true" />
+  <field name="symbol_type" type="string" indexed="true" stored="true" />
+  <field name="package_name" type="string" indexed="true" stored="true" />
+  <field name="line_start" type="pint" indexed="true" stored="true" />
+  <field name="line_end" type="pint" indexed="true" stored="true" />
+
+  <!-- Enrichment fields -->
+  <!-- Large text field for raw source code - no docValues to avoid 32K limit -->
+  <fieldType name="text_stored_only" class="solr.StrField" docValues="false" />
+  <field name="source_code" type="text_stored_only" indexed="false" stored="true" />
+  <field name="qualified_name" type="string" indexed="true" stored="true" />
+  <field name="receiver_type" type="string" indexed="true" stored="true" />
+  <field name="calls" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="called_by" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="types_used" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="implements" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="implemented_by" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="methods" type="strings" indexed="true" stored="true" multiValued="true" />
+  <field name="test_file" type="string" indexed="true" stored="true" />
+  <field name="tested_by" type="strings" indexed="true" stored="true" multiValued="true" />
+
+</schema>

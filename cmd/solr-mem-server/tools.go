@@ -213,5 +213,103 @@ func ToolSchemas() []ToolDefinition {
 			},
 			Handler: relateMemoriesTool,
 		},
+
+		// ── Code indexing tools ──────────────────────────────────────
+
+		{
+			Tool: &mcp.Tool{
+				Name: "search_code",
+				Description: `Search indexed code repositories using full-text search.
+
+**When to use**: Find functions, types, files, or code patterns across indexed repositories. Uses code-optimized analysis with boosting (symbol_name^4, title^3, content^2).
+
+**Required**: query (search text)
+**Optional**: repo_url, language, doc_level (repo/package/file/symbol), symbol_type, file_path, limit`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"query":       prop("string", "Full-text search query (required)"),
+					"repo_url":    prop("string", "Filter by repository URL/path"),
+					"language":    prop("string", "Filter by programming language (go, python, typescript, etc.)"),
+					"doc_level":   prop("string", "Filter by document level: repo, package, file, symbol"),
+					"symbol_type": prop("string", "Filter by symbol type: function, method, struct, interface, type, const, var"),
+					"file_path":   prop("string", "Filter by file path (exact match)"),
+					"limit":       integerProp("Max results (default: 10, max: 100)", intPtr(1), intPtr(100)),
+					"highlight":   prop("boolean", "Include highlighted snippets (default: true)"),
+					"facet":       prop("boolean", "Include facet counts (default: false)"),
+				}, "query"),
+			},
+			Handler: searchCodeTool,
+		},
+		{
+			Tool: &mcp.Tool{
+				Name: "get_symbol",
+				Description: `Get a specific code symbol with full source code and context.
+
+**When to use**: Retrieve a function, type, or method by name from an indexed repository. Returns the symbol's source code, signature, and metadata.
+
+**Required**: symbol_name
+**Optional**: repo_url (narrows search), include_related (also return parent file and sibling symbols)`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"symbol_name":     prop("string", "Name of the symbol to find (required)"),
+					"repo_url":        prop("string", "Filter by repository URL/path"),
+					"language":        prop("string", "Filter by programming language"),
+					"include_related": prop("boolean", "Include parent file doc and sibling symbols (default: false)"),
+				}, "symbol_name"),
+			},
+			Handler: getSymbolTool,
+		},
+		{
+			Tool: &mcp.Tool{
+				Name: "browse_code",
+				Description: `Navigate the code document hierarchy.
+
+**When to use**: Explore the structure of an indexed repository. List packages in a repo, files in a package, or symbols in a file.
+
+**Optional**: repo_url (list all repos if omitted), parent_id, file_path, doc_level, limit`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"repo_url":  prop("string", "Filter by repository URL/path"),
+					"parent_id": prop("string", "List children of this document ID"),
+					"file_path": prop("string", "List symbols in this file path"),
+					"doc_level": prop("string", "Filter by level: repo, package, file, symbol"),
+					"limit":     integerProp("Max results (default: 50, max: 200)", intPtr(1), intPtr(200)),
+				}),
+			},
+			Handler: browseCodeTool,
+		},
+		{
+			Tool: &mcp.Tool{
+				Name: "code_context",
+				Description: `Get rich context for a file location in an indexed repository.
+
+**When to use**: When you need to understand code at a specific file and optionally a line number. Returns the file summary, enclosing symbol, neighboring symbols, and package context.
+
+**Required**: file_path
+**Optional**: repo_url, line (returns enclosing symbol + neighbors), depth (levels of context, default: 1)`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"file_path": prop("string", "File path within the repository (required)"),
+					"repo_url":  prop("string", "Filter by repository URL/path"),
+					"line":      integerProp("Line number to get context for", intPtr(1), nil),
+					"depth":     integerProp("Levels of context to include (default: 1, max: 3)", intPtr(1), intPtr(3)),
+				}, "file_path"),
+			},
+			Handler: codeContextTool,
+		},
+		{
+			Tool: &mcp.Tool{
+				Name: "code_context_bundle",
+				Description: `Get a complete pre-analyzed context bundle for a code symbol.
+
+**When to use**: When you need to understand or modify a function/type. Returns the symbol's pre-analyzed YAML, its raw source code, all symbols it calls, all symbols that call it, and the types it references — everything needed to reason about the symbol in one response.
+
+**Required**: symbol_name
+**Optional**: repo_url, include_source (default: true), depth (1=direct calls/callers, 2=transitive)`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"symbol_name":    prop("string", "Name of the symbol to get context for (required)"),
+					"repo_url":       prop("string", "Filter by repository URL/path"),
+					"include_source": prop("boolean", "Include raw source code (default: true)"),
+					"depth":          integerProp("Depth of context: 1=direct, 2=transitive (default: 1, max: 2)", intPtr(1), intPtr(2)),
+				}, "symbol_name"),
+			},
+			Handler: codeContextBundleTool,
+		},
 	}
 }
