@@ -38,7 +38,8 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repo RepoConfig) error {
 		return fmt.Errorf("resolve repo: %w", err)
 	}
 
-	repoID := shortHash(repoPath)
+	// Use the original source path for a stable repo ID, not the clone dir path
+	repoID := shortHash(repo.Path)
 	commitSHA, err := gitHeadSHA(repoPath)
 	if err != nil {
 		return fmt.Errorf("get HEAD SHA: %w", err)
@@ -488,52 +489,48 @@ type fileChange struct {
 }
 
 func (idx *Indexer) resolveRepo(repo RepoConfig) (string, error) {
-	// Check if it's a local path with a .git directory
-	if info, err := os.Stat(repo.Path); err == nil && info.IsDir() {
-		gitDir := filepath.Join(repo.Path, ".git")
-		if _, err := os.Stat(gitDir); err == nil {
-			return repo.Path, nil
+	// If no clone dir is configured, use the repo path directly (one-shot only).
+	// This is only safe when the indexer doesn't need to git reset.
+	if idx.cfg.CloneDir == "" {
+		if info, err := os.Stat(repo.Path); err == nil && info.IsDir() {
+			gitDir := filepath.Join(repo.Path, ".git")
+			if _, err := os.Stat(gitDir); err == nil {
+				return repo.Path, nil
+			}
 		}
+		return "", fmt.Errorf("no CLONE_DIR configured and %s is not a git repo", repo.Path)
 	}
 
-	// Treat as a remote URL — clone into CloneDir
+	// Always use a managed clone in CloneDir.
+	// The repo path is treated as a source (local path or remote URL) to clone from.
 	cloneDir := idx.cfg.CloneDir
 	if err := os.MkdirAll(cloneDir, 0o755); err != nil {
 		return "", fmt.Errorf("create clone dir: %w", err)
 	}
 
-	// Derive a stable directory name from the repo URL
 	repoDir := filepath.Join(cloneDir, sanitizeRepoName(repo.Path))
+	branch := repo.Branch
+	if branch == "" {
+		branch = idx.cfg.DefaultBranch
+	}
 
 	if _, err := os.Stat(filepath.Join(repoDir, ".git")); err == nil {
-		// Already cloned — fetch and reset to latest
-		branch := repo.Branch
-		if branch == "" {
-			branch = idx.cfg.DefaultBranch
-		}
-		log.Printf("Updating existing clone: %s", repoDir)
+		// Already cloned — fetch and reset to tracked branch
+		log.Printf("Updating managed clone: %s (branch: %s)", repoDir, branch)
 		if err := gitFetchAndReset(repoDir, branch); err != nil {
 			return "", fmt.Errorf("update clone: %w", err)
 		}
 		return repoDir, nil
 	}
 
-	// Fresh clone
-	branch := repo.Branch
-	if branch == "" {
-		branch = idx.cfg.DefaultBranch
-	}
+	// Fresh clone from the source
 	log.Printf("Cloning %s into %s (branch: %s)", repo.Path, repoDir, branch)
-	cmd := exec.Command("git", "clone", "--branch", branch, "--single-branch", "--depth=1", repo.Path, repoDir)
+	cmd := exec.Command("git", "clone", "--branch", branch, "--single-branch", repo.Path, repoDir)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("git clone %s: %w", repo.Path, err)
 	}
-
-	// Unshallow so we can do incremental diffs later
-	cmd = exec.Command("git", "-C", repoDir, "fetch", "--unshallow")
-	cmd.Run() // ignore error — might already be complete
 
 	return repoDir, nil
 }
