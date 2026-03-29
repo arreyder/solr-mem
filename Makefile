@@ -1,4 +1,4 @@
-.PHONY: build build-indexer install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall
+.PHONY: build build-indexer install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall launchd-install launchd-install-server launchd-install-indexer launchd-uninstall
 
 # Go targets
 build:
@@ -84,6 +84,63 @@ indexer-uninstall:
 	systemctl --user disable --now solr-mem-indexer.service || true
 	rm -f ~/.config/systemd/user/solr-mem-indexer.service
 	systemctl --user daemon-reload
+
+# macOS launchd services
+launchd-install-server: build
+	mkdir -p ~/Library/LaunchAgents
+	@echo '<?xml version="1.0" encoding="UTF-8"?>' > ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '<plist version="1.0"><dict>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  <key>Label</key><string>com.solr-mem.server</string>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  <key>ProgramArguments</key><array>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '    <string>'$$(go env GOPATH)'/bin/solr-mem-server</string>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '    <string>--http</string><string>:8080</string>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  </array>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  <key>EnvironmentVariables</key><dict>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '    <key>SOLR_URL</key><string>http://localhost:8983/solr/memories</string>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '    <key>SOLR_URL_CODE</key><string>http://localhost:8983/solr/code</string>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  </dict>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  <key>KeepAlive</key><true/>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  <key>RunAtLoad</key><true/>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  <key>StandardOutPath</key><string>/tmp/solr-mem-server.log</string>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '  <key>StandardErrorPath</key><string>/tmp/solr-mem-server.log</string>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	@echo '</dict></plist>' >> ~/Library/LaunchAgents/com.solr-mem.server.plist
+	go install ./cmd/solr-mem-server
+	launchctl load ~/Library/LaunchAgents/com.solr-mem.server.plist
+
+launchd-install-indexer: build-indexer
+	mkdir -p ~/Library/LaunchAgents
+	@echo '<?xml version="1.0" encoding="UTF-8"?>' > ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '<plist version="1.0"><dict>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  <key>Label</key><string>com.solr-mem.indexer</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  <key>ProgramArguments</key><array>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <string>'$$(go env GOPATH)'/bin/solr-mem-indexer</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <string>--watch</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  </array>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  <key>EnvironmentVariables</key><dict>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <key>SOLR_URL_CODE</key><string>http://localhost:8983/solr/code</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <key>CLONE_DIR</key><string>'$$HOME'/solr-mem-repos</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <key>INDEX_BRANCH</key><string>main</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <key>INDEX_INTERVAL</key><string>300</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <key>INDEX_REPOS</key><string>$(INDEX_REPOS)</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  </dict>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  <key>KeepAlive</key><true/>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  <key>RunAtLoad</key><true/>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  <key>StandardOutPath</key><string>/tmp/solr-mem-indexer.log</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '  <key>StandardErrorPath</key><string>/tmp/solr-mem-indexer.log</string>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	@echo '</dict></plist>' >> ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+	go install ./cmd/solr-mem-indexer
+	launchctl load ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+
+launchd-uninstall:
+	launchctl unload ~/Library/LaunchAgents/com.solr-mem.server.plist 2>/dev/null || true
+	launchctl unload ~/Library/LaunchAgents/com.solr-mem.indexer.plist 2>/dev/null || true
+	rm -f ~/Library/LaunchAgents/com.solr-mem.server.plist
+	rm -f ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+
+launchd-install: launchd-install-server launchd-install-indexer
 
 # Print Claude Code MCP config
 config:

@@ -150,9 +150,51 @@ make indexer-install     # Install and start indexer
 
 ### launchd (macOS)
 
-Service plists go in `~/Library/LaunchAgents/`:
-- `com.solr-mem.server.plist` — MCP server on :8080
-- `com.solr-mem.indexer.plist` — Repo indexer in watch mode
+Full setup from scratch on a Mac with Homebrew:
+
+```bash
+# Install prerequisites
+brew install go git colima docker docker-compose
+
+# Start container runtime
+colima start
+
+# Clone and build
+git clone git@github.com:arreyder/solr-mem.git ~/repos/solr-mem
+cd ~/repos/solr-mem
+make build-all
+
+# Start Solr
+make up
+
+# Wait for Solr, then create the code collection
+# (memories collection is created automatically by docker-compose)
+docker exec solr-mem mkdir -p /var/solr/data/code/conf
+docker cp solr/code-managed-schema.xml solr-mem:/var/solr/data/code/conf/managed-schema.xml
+docker cp solr/code-solrconfig.xml solr-mem:/var/solr/data/code/conf/solrconfig.xml
+docker cp solr/stopwords.txt solr-mem:/var/solr/data/code/conf/stopwords.txt
+echo "name=code" | docker exec -i solr-mem tee /var/solr/data/code/core.properties
+curl "http://localhost:8983/solr/admin/cores?action=CREATE&name=code&instanceDir=/var/solr/data/code"
+
+# Install launchd services
+make launchd-install-server
+make launchd-install-indexer INDEX_REPOS=git@github.com:org/repo.git
+
+# Or both at once
+make launchd-install INDEX_REPOS=git@github.com:org/repo.git
+
+# Verify
+curl http://localhost:8080/healthz
+tail -f /tmp/solr-mem-server.log
+tail -f /tmp/solr-mem-indexer.log
+
+# Uninstall
+make launchd-uninstall
+```
+
+The indexer manages its own clones in `~/solr-mem-repos/` and polls for new commits every 5 minutes.
+
+Logs: `/tmp/solr-mem-server.log` and `/tmp/solr-mem-indexer.log`
 
 ## Architecture
 
