@@ -166,10 +166,38 @@ func (cr *CrossRefIndex) resolveCallTarget(callTarget, callerQN string) string {
 	return "" // unresolved
 }
 
-// ApplyUpdates performs batch Solr updates to populate cross-reference fields.
+const bulkBatchSize = 100
+
+// ApplyUpdates performs batched Solr updates to populate cross-reference fields.
 func (cr *CrossRefIndex) ApplyUpdates(ctx context.Context, client *solr.Client) error {
 	now := time.Now().UTC().Format(time.RFC3339)
+	var batch []map[string]any
 	updates := 0
+	errors := 0
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		if err := client.BulkUpdate(ctx, batch); err != nil {
+			log.Printf("Warning: bulk update failed (%d docs): %v", len(batch), err)
+			errors += len(batch)
+		} else {
+			updates += len(batch)
+		}
+		batch = batch[:0]
+	}
+
+	enqueue := func(id string, fields map[string]any) {
+		doc := map[string]any{"id": id}
+		for k, v := range fields {
+			doc[k] = map[string]any{"set": v}
+		}
+		batch = append(batch, doc)
+		if len(batch) >= bulkBatchSize {
+			flush()
+		}
+	}
 
 	// Update called_by on target symbols
 	for targetQN, callers := range cr.CalledBy {
@@ -177,7 +205,6 @@ func (cr *CrossRefIndex) ApplyUpdates(ctx context.Context, client *solr.Client) 
 		if !ok {
 			continue
 		}
-		// Deduplicate callers
 		seen := make(map[string]bool)
 		var unique []string
 		for _, c := range callers {
@@ -186,28 +213,14 @@ func (cr *CrossRefIndex) ApplyUpdates(ctx context.Context, client *solr.Client) 
 				unique = append(unique, c)
 			}
 		}
-		if err := client.Update(ctx, docID, map[string]any{
-			"called_by":  unique,
-			"updated_at": now,
-		}); err != nil {
-			log.Printf("Warning: failed to update called_by for %s: %v", targetQN, err)
-			continue
-		}
-		updates++
+		enqueue(docID, map[string]any{"called_by": unique, "updated_at": now})
 	}
 
 	// Update implements/implemented_by
 	for typeName, ifaces := range cr.Implements {
-		// Find the type's doc ID — try all packages
 		for qn, docID := range cr.SymbolIDs {
 			if strings.HasSuffix(qn, "."+typeName) {
-				if err := client.Update(ctx, docID, map[string]any{
-					"implements": ifaces,
-					"updated_at": now,
-				}); err != nil {
-					log.Printf("Warning: failed to update implements for %s: %v", typeName, err)
-				}
-				updates++
+				enqueue(docID, map[string]any{"implements": ifaces, "updated_at": now})
 				break
 			}
 		}
@@ -216,13 +229,7 @@ func (cr *CrossRefIndex) ApplyUpdates(ctx context.Context, client *solr.Client) 
 	for ifaceName, types := range cr.ImplementedBy {
 		for qn, docID := range cr.SymbolIDs {
 			if strings.HasSuffix(qn, "."+ifaceName) {
-				if err := client.Update(ctx, docID, map[string]any{
-					"implemented_by": types,
-					"updated_at":     now,
-				}); err != nil {
-					log.Printf("Warning: failed to update implemented_by for %s: %v", ifaceName, err)
-				}
-				updates++
+				enqueue(docID, map[string]any{"implemented_by": types, "updated_at": now})
 				break
 			}
 		}
@@ -232,20 +239,16 @@ func (cr *CrossRefIndex) ApplyUpdates(ctx context.Context, client *solr.Client) 
 	for recvType, methods := range cr.MethodSets {
 		for qn, docID := range cr.SymbolIDs {
 			if strings.HasSuffix(qn, "."+recvType) {
-				if err := client.Update(ctx, docID, map[string]any{
-					"methods":    methods,
-					"updated_at": now,
-				}); err != nil {
-					log.Printf("Warning: failed to update methods for %s: %v", recvType, err)
-				}
-				updates++
+				enqueue(docID, map[string]any{"methods": methods, "updated_at": now})
 				break
 			}
 		}
 	}
 
-	log.Printf("Cross-reference pass: %d updates applied (%d called_by, %d implements, %d method_sets)",
-		updates, len(cr.CalledBy), len(cr.Implements), len(cr.MethodSets))
+	flush()
+
+	log.Printf("Cross-reference pass: %d updates applied, %d errors (%d called_by, %d implements, %d method_sets)",
+		updates, errors, len(cr.CalledBy), len(cr.Implements), len(cr.MethodSets))
 
 	return nil
 }
