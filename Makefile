@@ -1,4 +1,4 @@
-.PHONY: build build-indexer install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall launchd-install launchd-install-server launchd-install-indexer launchd-uninstall
+.PHONY: build build-indexer install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall launchd-install launchd-install-server launchd-install-indexer launchd-uninstall skill-install skill-uninstall
 
 # Go targets
 build:
@@ -141,6 +141,14 @@ launchd-uninstall:
 	rm -f ~/Library/LaunchAgents/com.solr-mem.indexer.plist
 
 launchd-install: launchd-install-server launchd-install-indexer
+
+# Claude Code skill
+skill-install:
+	mkdir -p ~/.claude/skills
+	ln -sfn $(CURDIR)/skills/solr-mem ~/.claude/skills/solr-mem
+
+skill-uninstall:
+	rm -f ~/.claude/skills/solr-mem
 
 # Print Claude Code MCP config
 config:

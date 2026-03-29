@@ -22,10 +22,17 @@ type Client struct {
 // NewClient creates a new Solr client for the given core URL.
 // baseURL should be like "http://localhost:8983/solr/memories".
 func NewClient(baseURL string) *Client {
+	transport := &http.Transport{
+		MaxIdleConns:        50,
+		MaxIdleConnsPerHost: 50,
+		MaxConnsPerHost:     50,
+		IdleConnTimeout:     90 * time.Second,
+	}
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 		},
 	}
 }
@@ -105,7 +112,7 @@ func (c *Client) Query(ctx context.Context, params QueryParams) (*QueryResponse,
 	return ParseQueryResponse(resp.Body)
 }
 
-// Update performs an atomic update on a document by ID.
+// Update performs an atomic update on a document by ID with retry and backoff.
 func (c *Client) Update(ctx context.Context, id string, fields map[string]any) error {
 	// Build atomic update payload: {"id": "...", "field": {"set": value}}
 	doc := map[string]any{"id": id}
@@ -118,21 +125,91 @@ func (c *Client) Update(ctx context.Context, id string, fields map[string]any) e
 		return fmt.Errorf("marshal update: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.baseURL+"/update?commitWithin=1000",
-		bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(attempt*attempt) * 500 * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("solr update: %w", err)
-	}
-	defer resp.Body.Close()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			c.baseURL+"/update?commitWithin=1000",
+			bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
 
-	return c.checkResponse(resp)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("solr update: %w", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if err := c.checkResponse(resp); err != nil {
+			lastErr = err
+			if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return lastErr
+}
+
+// BulkUpdate performs atomic updates on multiple documents in a single request.
+func (c *Client) BulkUpdate(ctx context.Context, updates []map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	body, err := json.Marshal(updates)
+	if err != nil {
+		return fmt.Errorf("marshal bulk update: %w", err)
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(attempt*attempt) * 500 * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			c.baseURL+"/update?commitWithin=5000",
+			bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("solr bulk update: %w", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if err := c.checkResponse(resp); err != nil {
+			lastErr = err
+			if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return lastErr
 }
 
 // Delete removes a document by ID.

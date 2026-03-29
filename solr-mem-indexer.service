@@ -7,7 +7,7 @@ Wants=docker.service
 Type=simple
 ExecStart=/home/arreyder/repos/solr-mem/bin/solr-mem-indexer --watch
 Environment=SOLR_URL_CODE=http://pax89.local:8983/solr/code
-Environment=INDEX_REPOS=/home/arreyder/repos/solr-mem
+Environment=INDEX_REPOS=/home/arreyder/repos/solr-mem,git@github.com:ductone/ops.git
 Environment=INDEX_INTERVAL=300
 Environment=INDEX_BRANCH=main
 Restart=on-failure

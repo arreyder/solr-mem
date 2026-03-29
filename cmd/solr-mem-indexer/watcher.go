@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"math/rand"
 	"os/exec"
 	"strings"
 	"time"
@@ -39,7 +40,18 @@ func (w *Watcher) Run(ctx context.Context) {
 }
 
 func (w *Watcher) poll(ctx context.Context) {
-	for _, repo := range w.cfg.Repos {
+	for i, repo := range w.cfg.Repos {
+		// Splay between repos to avoid hammering Solr
+		if i > 0 {
+			splay := time.Duration(rand.Intn(10)+5) * time.Second
+			log.Printf("Splay: waiting %s before next repo", splay)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(splay):
+			}
+		}
+
 		// Try to fetch latest changes
 		if err := gitFetch(repo.Path, repo.Branch); err != nil {
 			log.Printf("Warning: git fetch failed for %s: %v", repo.Path, err)

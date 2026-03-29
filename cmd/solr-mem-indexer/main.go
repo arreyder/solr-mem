@@ -61,6 +61,14 @@ func main() {
 	}
 	log.Printf("Connected to Solr at %s", cfg.SolrURL)
 
+	// Acquire process-level lock to prevent concurrent indexing
+	lock := NewFileLock(cfg.CloneDir)
+	if err := lock.Lock(); err != nil {
+		log.Fatalf("Cannot acquire lock: %v", err)
+	}
+	defer lock.Unlock()
+	log.Printf("Acquired index lock")
+
 	indexer := NewIndexer(solrClient, cfg)
 
 	if oneShot || !watchMode {
