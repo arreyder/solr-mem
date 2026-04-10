@@ -214,6 +214,23 @@ func ToolSchemas() []ToolDefinition {
 			Handler: relateMemoriesTool,
 		},
 
+		// ── Index status ────────────────────────────────────────────
+
+		{
+			Tool: &mcp.Tool{
+				Name: "index_status",
+				Description: `Check the status of code indexing across repositories.
+
+**When to use**: See which repositories have been indexed, whether indexing is in progress, and how far along it is. Shows state (scanning, indexing, cross-referencing, complete, error), files processed, and last update time.
+
+**Optional**: repo_url (filter to a specific repository)`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"repo_url": prop("string", "Filter by repository URL/path"),
+				}),
+			},
+			Handler: indexStatusTool,
+		},
+
 		// ── Code indexing tools ──────────────────────────────────────
 
 		{

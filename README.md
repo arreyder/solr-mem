@@ -32,7 +32,68 @@ Cross-references (who calls what, interface implementations, method sets) are re
 ## Quick start
 
 ```bash
-# Start Solr
+# Create a .solr-mem.yaml in your source directory
+cat > ~/src/.solr-mem.yaml <<'EOF'
+repos:
+  - path: conductorone/baton/main
+  - path: arreyder/solr-mem/main
+EOF
+
+# Start Solr + MCP server + index
+SRC_DIR=~/src make docker-up
+
+# Add to Claude Code
+claude mcp add -s user --transport http solr-mem http://localhost:8080/mcp
+```
+
+The indexer scans `SRC_DIR` for `.solr-mem.yaml` files and indexes every repo listed in them. Paths in the config are relative to the file's location. Solr runs on port 8983, the MCP server on port 8080.
+
+### `.solr-mem.yaml`
+
+Place these anywhere in your source tree. The indexer discovers all of them. Paths are relative to the config file's location.
+
+> **Note:** The scanner only descends 4 directories deep from `SRC_DIR` when looking for config files. Place `.solr-mem.yaml` files at the root, org, or repo level — not buried inside source trees. This keeps the scan fast, especially on network-mounted filesystems.
+
+```yaml
+repos:
+  - path: main              # worktree relative to this file
+  - path: feature-branch    # another worktree
+  - path: ../other-repo/main
+  - path: /absolute/path/to/repo
+    branch: develop         # optional, defaults to main
+```
+
+In watch mode (`--watch`), the indexer re-scans for config files on each poll tick. Edit a `.solr-mem.yaml` and the changes are picked up automatically.
+
+### Adding a new repo to the index
+
+To index a new repository, add it to a `.solr-mem.yaml` file under your source root. If one doesn't exist near the repo, create one. For example, to add a repo at `~/src/org/new-repo/main`:
+
+```bash
+# Option 1: add to an existing .solr-mem.yaml
+echo '  - path: org/new-repo/main' >> ~/src/.solr-mem.yaml
+
+# Option 2: create a .solr-mem.yaml next to the repo
+cat > ~/src/org/new-repo/.solr-mem.yaml <<'EOF'
+repos:
+  - path: main
+EOF
+```
+
+If the indexer is running in watch mode, it picks up the change on the next poll (default: 5 minutes). For immediate indexing:
+
+```bash
+# One-shot re-scan
+./bin/solr-mem-indexer --scan-dir ~/src --once
+
+# Or with docker
+SRC_DIR=~/src docker compose --profile network run --rm indexer
+```
+
+### Manual setup (stdio mode)
+
+```bash
+# Start Solr only
 make up
 
 # Build both binaries
@@ -43,16 +104,14 @@ SOLR_URL=http://localhost:8983/solr/memories \
 SOLR_URL_CODE=http://localhost:8983/solr/code \
   ./bin/solr-mem-server
 
-# Index a repository
-SOLR_URL_CODE=http://localhost:8983/solr/code \
-CLONE_DIR=~/solr-mem-repos \
-  ./bin/solr-mem-indexer --repo /path/to/repo --once
+# Index using .solr-mem.yaml files
+./bin/solr-mem-indexer --scan-dir ~/src --once
 
-# Watch mode (polls for new commits every 5 minutes)
-SOLR_URL_CODE=http://localhost:8983/solr/code \
-CLONE_DIR=~/solr-mem-repos \
-INDEX_REPOS=git@github.com:org/repo.git \
-  ./bin/solr-mem-indexer --watch
+# Or index a single repo
+./bin/solr-mem-indexer --repo /path/to/repo --once
+
+# Watch mode (re-scans configs + polls for new commits every 5 minutes)
+./bin/solr-mem-indexer --scan-dir ~/src --watch
 ```
 
 ## MCP tools
@@ -107,15 +166,19 @@ Pass `--http :8080` for HTTP mode (recommended for remote access). Default is st
 
 ### solr-mem-indexer
 
-| Env var | Default | Description |
-|---------|---------|-------------|
+| Flag / Env var | Default | Description |
+|----------------|---------|-------------|
+| `--scan-dir` | | Root directory to scan for `.solr-mem.yaml` config files |
+| `--repo` | | Path to a single git repository to index |
+| `--once` | | Index once and exit |
+| `--watch` | | Poll for changes and config file updates |
 | `SOLR_URL_CODE` | `http://localhost:8983/solr/code` | Code collection URL |
-| `CLONE_DIR` | `/tmp/solr-mem-repos` | Where to clone/manage repos |
+| `CLONE_DIR` | `/tmp/solr-mem-repos` | Where to clone/manage repos (not used with `--scan-dir`) |
 | `INDEX_REPOS` | | Comma-separated repo paths or URLs |
 | `INDEX_BRANCH` | `main` | Branch to track |
 | `INDEX_INTERVAL` | `300` | Poll interval in seconds (watch mode) |
 
-When `CLONE_DIR` is set, the indexer manages its own clones and can safely `git reset --hard` to track the configured branch. Source repos are never modified.
+With `--scan-dir`, the indexer reads repos directly from local paths listed in `.solr-mem.yaml` files. With `CLONE_DIR` + `INDEX_REPOS`, it manages its own clones and can safely `git reset --hard` to track branches. Source repos are never modified in either mode.
 
 ## Content format guidance
 
@@ -132,14 +195,18 @@ tags: [bug, consistency, gsi]
 
 ## Deployment
 
-### Docker Compose (Solr)
+### Docker Compose
 
 ```bash
-make up        # Start Solr
-make down      # Stop Solr
-make reset     # Stop Solr and delete all data
-make logs      # Tail Solr logs
+SRC_DIR=~/src make docker-up  # Start Solr + MCP server + scan & index
+make docker-up                # Same, scans current directory
+make up                       # Start Solr only
+make down                     # Stop all services
+make reset                    # Stop all services and delete all data
+make logs                     # Tail logs
 ```
+
+`SRC_DIR` is mounted read-only into the indexer container. It defaults to `.` if not set. The indexer finds all `.solr-mem.yaml` files under it.
 
 ### systemd (Linux)
 

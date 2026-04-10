@@ -53,18 +53,56 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repo RepoConfig) error {
 
 	if lastSHA == commitSHA {
 		log.Printf("Repository %s already at %s, skipping", repoPath, commitSHA[:8])
+		idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "complete", "already up to date", 0, 0)
 		return nil
 	}
 
+	var indexErr error
 	if lastSHA != "" {
-		return idx.incrementalIndex(ctx, repoPath, repoID, repo, lastSHA, commitSHA)
+		indexErr = idx.incrementalIndex(ctx, repoPath, repoID, repo, lastSHA, commitSHA)
+	} else {
+		indexErr = idx.fullIndex(ctx, repoPath, repoID, repo, commitSHA)
 	}
 
-	return idx.fullIndex(ctx, repoPath, repoID, repo, commitSHA)
+	if indexErr != nil {
+		idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "error", indexErr.Error(), 0, 0)
+		return indexErr
+	}
+
+	return nil
+}
+
+// writeStatus writes or updates a status document for a repo in the code collection.
+func (idx *Indexer) writeStatus(ctx context.Context, repoID, repoPath, commitSHA, state, message string, filesProcessed, filesTotal int) {
+	now := time.Now().UTC()
+	content := fmt.Sprintf("state: %s\nrepo: %s\ncommit: %s\nfiles_processed: %d\nfiles_total: %d",
+		state, repoPath, commitSHA, filesProcessed, filesTotal)
+	if message != "" {
+		content += fmt.Sprintf("\nmessage: %s", message)
+	}
+
+	doc := solr.CodeDocument{
+		ID:        fmt.Sprintf("status:%s", repoID),
+		Content:   content,
+		Title:     fmt.Sprintf("Index status: %s", filepath.Base(repoPath)),
+		Tags:      []string{"status", state, filepath.Base(repoPath)},
+		Format:    "yaml",
+		RepoURL:   repoPath,
+		RepoID:    repoID,
+		DocLevel:  "status",
+		CommitSHA: commitSHA,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	if err := idx.solr.AddCode(ctx, doc); err != nil {
+		log.Printf("Warning: failed to write status for %s: %v", repoPath, err)
+	}
 }
 
 func (idx *Indexer) fullIndex(ctx context.Context, repoPath, repoID string, repo RepoConfig, commitSHA string) error {
 	log.Printf("Full index of %s at %s", repoPath, commitSHA[:8])
+	idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "scanning", "", 0, 0)
 
 	now := time.Now().UTC()
 
@@ -93,6 +131,7 @@ func (idx *Indexer) fullIndex(ctx context.Context, repoPath, repoID string, repo
 	}
 
 	log.Printf("Found %d source files", len(files))
+	idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "indexing", "", 0, len(files))
 
 	// Track packages for package-level docs
 	packages := make(map[string]*packageInfo)
@@ -102,6 +141,7 @@ func (idx *Indexer) fullIndex(ctx context.Context, repoPath, repoID string, repo
 
 	// Process files in batches
 	var allDocs []solr.CodeDocument
+	filesProcessed := 0
 	for _, filePath := range files {
 		relPath, _ := filepath.Rel(repoPath, filePath)
 
@@ -172,12 +212,15 @@ func (idx *Indexer) fullIndex(ctx context.Context, repoPath, repoID string, repo
 			}
 		}
 
+		filesProcessed++
+
 		// Batch index every 500 docs
 		if len(allDocs) >= 500 {
 			if err := idx.solr.AddCode(ctx, allDocs...); err != nil {
 				return fmt.Errorf("batch index: %w", err)
 			}
-			log.Printf("Indexed %d documents...", len(allDocs))
+			log.Printf("Indexed %d documents (%d/%d files)...", len(allDocs), filesProcessed, len(files))
+			idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "indexing", "", filesProcessed, len(files))
 			allDocs = allDocs[:0]
 		}
 	}
@@ -200,6 +243,7 @@ func (idx *Indexer) fullIndex(ctx context.Context, repoPath, repoID string, repo
 	}
 
 	log.Printf("Pass 1 complete: indexed %d files across %d packages", len(files), len(packages))
+	idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "cross-referencing", "", filesProcessed, len(files))
 
 	// Pass 2: Cross-reference resolution
 	log.Printf("Starting pass 2: cross-referencing (%s)", crossRef.Stats())
@@ -212,6 +256,7 @@ func (idx *Indexer) fullIndex(ctx context.Context, repoPath, repoID string, repo
 	}
 
 	log.Printf("Full index complete: %d files, %d packages", len(files), len(packages))
+	idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "complete", fmt.Sprintf("%d files, %d packages", len(files), len(packages)), len(files), len(files))
 	return nil
 }
 
@@ -304,6 +349,7 @@ func (idx *Indexer) incrementalIndex(ctx context.Context, repoPath, repoID strin
 	}
 
 	log.Printf("Incremental index complete: %d files changed, %d packages affected", len(changed), len(affectedPackages))
+	idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "complete", fmt.Sprintf("%d files changed, %d packages affected", len(changed), len(affectedPackages)), len(changed), len(changed))
 	return nil
 }
 
@@ -493,6 +539,7 @@ func (idx *Indexer) resolveRepo(repo RepoConfig) (string, error) {
 	// This is only safe when the indexer doesn't need to git reset.
 	if idx.cfg.CloneDir == "" {
 		if info, err := os.Stat(repo.Path); err == nil && info.IsDir() {
+			// .git can be a directory (normal repo) or a file (worktree)
 			gitDir := filepath.Join(repo.Path, ".git")
 			if _, err := os.Stat(gitDir); err == nil {
 				return repo.Path, nil

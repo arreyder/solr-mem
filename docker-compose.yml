@@ -9,12 +9,19 @@ services:
       - ./solr/solrconfig.xml:/opt/solr/server/solr/configsets/memories/conf/solrconfig.xml
       - ./solr/stopwords.txt:/opt/solr/server/solr/configsets/memories/conf/stopwords.txt
       - ./solr/synonyms.txt:/opt/solr/server/solr/configsets/memories/conf/synonyms.txt
+      - ./solr/code-managed-schema.xml:/opt/solr/server/solr/configsets/code/conf/managed-schema.xml
+      - ./solr/code-solrconfig.xml:/opt/solr/server/solr/configsets/code/conf/solrconfig.xml
+      - ./solr/stopwords.txt:/opt/solr/server/solr/configsets/code/conf/stopwords.txt
+      - ./solr/synonyms.txt:/opt/solr/server/solr/configsets/code/conf/synonyms.txt
       - solr_data:/var/solr
     environment:
       SOLR_JAVA_MEM: "-Xms1g -Xmx4g"
-    command: ["solr-precreate", "memories", "/opt/solr/server/solr/configsets/memories"]
+    command: >-
+      bash -c "precreate-core memories /opt/solr/server/solr/configsets/memories;
+      precreate-core code /opt/solr/server/solr/configsets/code;
+      exec solr-foreground"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8983/solr/memories/admin/ping | grep -q OK"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8983/solr/memories/admin/ping | grep -q OK && curl -sf http://localhost:8983/solr/code/admin/ping | grep -q OK"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -33,6 +40,22 @@ services:
       solr:
         condition: service_healthy
     command: ["--http", ":8080"]
+    restart: unless-stopped
+    profiles:
+      - network
+
+  indexer:
+    build: .
+    container_name: solr-mem-indexer
+    entrypoint: ["solr-mem-indexer"]
+    command: ["--scan-dir", "${SRC_DIR:-.}", "--watch"]
+    volumes:
+      - ${SRC_DIR:-.}:${SRC_DIR:-.}:ro
+    environment:
+      SOLR_URL_CODE: "http://solr:8983/solr/code"
+    depends_on:
+      solr:
+        condition: service_healthy
     restart: unless-stopped
     profiles:
       - network
