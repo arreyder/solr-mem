@@ -16,6 +16,7 @@ type Config struct {
 	PollInterval  time.Duration // How often to check for new commits
 	CloneDir      string        // Where to clone/store repos
 	DefaultBranch string        // Branch to track
+	ScanDir       string        // Root directory to scan for .solr-mem.yaml files
 }
 
 // RepoConfig describes a single repository to index.

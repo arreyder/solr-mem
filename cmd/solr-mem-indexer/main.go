@@ -15,11 +15,13 @@ import (
 func main() {
 	var (
 		repoPath  string
+		scanDir   string
 		oneShot   bool
 		watchMode bool
 	)
 
 	flag.StringVar(&repoPath, "repo", "", "Path to a local git repository to index")
+	flag.StringVar(&scanDir, "scan-dir", "", "Root directory to scan for .solr-mem.yaml config files")
 	flag.BoolVar(&oneShot, "once", false, "Index once and exit (no polling)")
 	flag.BoolVar(&watchMode, "watch", false, "Run in watch mode, polling for changes")
 	flag.Parse()
@@ -29,7 +31,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// CLI repo overrides env
+	// CLI flags override env
+	if scanDir != "" {
+		cfg.ScanDir = scanDir
+	}
 	if repoPath != "" {
 		cfg.Repos = []RepoConfig{{
 			Path:   repoPath,
@@ -37,8 +42,20 @@ func main() {
 		}}
 	}
 
+	// Scan for .solr-mem.yaml config files
+	if cfg.ScanDir != "" {
+		log.Printf("Scanning %s for %s files...", cfg.ScanDir, configFileName)
+		repos, _, err := ScanForConfigs(cfg.ScanDir, cfg.DefaultBranch)
+		if err != nil {
+			log.Fatalf("Failed to scan %s: %v", cfg.ScanDir, err)
+		}
+		cfg.Repos = repos
+		// Scanned repos are local worktrees — don't clone them
+		cfg.CloneDir = ""
+	}
+
 	if len(cfg.Repos) == 0 {
-		fmt.Fprintln(os.Stderr, "No repositories configured. Use --repo <path> or INDEX_REPOS env var.")
+		fmt.Fprintln(os.Stderr, "No repositories configured. Use --scan-dir, --repo, or INDEX_REPOS env var.")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -71,18 +88,17 @@ func main() {
 
 	indexer := NewIndexer(solrClient, cfg)
 
-	if oneShot || !watchMode {
-		// Index all configured repos once
-		for _, repo := range cfg.Repos {
-			log.Printf("Indexing repository: %s", repo.Path)
-			if err := indexer.IndexRepo(ctx, repo); err != nil {
-				log.Fatalf("Failed to index %s: %v", repo.Path, err)
-			}
-			log.Printf("Successfully indexed: %s", repo.Path)
+	// Always do an initial index pass
+	for _, repo := range cfg.Repos {
+		log.Printf("Indexing repository: %s", repo.Path)
+		if err := indexer.IndexRepo(ctx, repo); err != nil {
+			log.Fatalf("Failed to index %s: %v", repo.Path, err)
 		}
-		if !watchMode {
-			return
-		}
+		log.Printf("Successfully indexed: %s", repo.Path)
+	}
+
+	if !watchMode {
+		return
 	}
 
 	// Watch mode: poll for changes
