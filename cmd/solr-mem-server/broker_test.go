@@ -61,13 +61,10 @@ func TestBrokerPhaseFilter(t *testing.T) {
 	waitForBuild(t, b, "run-2", 500*time.Millisecond)
 
 	// Requesting a different phase: packet exists but phase doesn't match.
-	// With nil clients the packet has 0 items so it's still returned as ready
-	// (phase filtering only suppresses when delivery != interrupt).
+	// Should return none — don't surface a mismatched packet.
 	pr := b.GetPacket("run-2", "implementing")
-	// The packet was built for "planning", requested "implementing" — still ready
-	// because the packet does exist.
-	if pr.Status != PacketStatusReady {
-		t.Errorf("expected status=ready, got %s", pr.Status)
+	if pr.Status != PacketStatusNone {
+		t.Errorf("expected status=none for mismatched phase, got %s", pr.Status)
 	}
 
 	// Matching phase always works.
@@ -481,18 +478,23 @@ func TestComputeRelevance(t *testing.T) {
 		Title:      "memory broker implementation",
 		Summary:    "broker that handles work observations",
 		SymbolName: "Broker",
+		Reason:     "original reason",
 	}
 	obs := WorkObservation{
 		Task:     "memory broker",
 		Entities: []string{"Broker"},
 	}
 
-	score := computeRelevance(item, obs)
-	if score < 0.5 {
-		t.Errorf("expected relevance >= 0.5 for matching item, got %.2f", score)
+	computeRelevance(&item, obs)
+	if item.Relevance < 0.5 {
+		t.Errorf("expected relevance >= 0.5 for matching item, got %.2f", item.Relevance)
 	}
-	if score > 1.0 {
-		t.Errorf("relevance should not exceed 1.0, got %.2f", score)
+	if item.Relevance > 1.0 {
+		t.Errorf("relevance should not exceed 1.0, got %.2f", item.Relevance)
+	}
+	// Exact entity match should update Reason.
+	if !strings.Contains(item.Reason, "exact match") {
+		t.Errorf("expected Reason to contain 'exact match', got %q", item.Reason)
 	}
 }
 

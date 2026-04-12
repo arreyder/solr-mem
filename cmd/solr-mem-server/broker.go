@@ -223,12 +223,13 @@ func (b *Broker) GetPacket(runID, phase string) PacketResult {
 
 	// If caller specified a phase, only return if it matches or packet is interrupt.
 	if phase != "" && rs.packet.Phase != phase && rs.packet.Delivery != DeliveryInterrupt {
-		// Packet exists but doesn't match the requested phase.
-		// Still report building if a rebuild is in progress.
+		// Packet exists but was built for a different phase.
+		// If a rebuild is in flight, report building — the rebuild may produce a match.
 		if rs.building {
 			return PacketResult{Status: PacketStatusBuilding, CurrentSeq: rs.seq}
 		}
-		return PacketResult{Status: PacketStatusReady, Packet: rs.packet, CurrentSeq: rs.seq}
+		// Otherwise report none — don't surface a mismatched packet as "ready".
+		return PacketResult{Status: PacketStatusNone, CurrentSeq: rs.seq}
 	}
 
 	return PacketResult{Status: PacketStatusReady, Packet: rs.packet, CurrentSeq: rs.seq}
@@ -521,7 +522,7 @@ func scoreCandidates(candidates []MemoryPacketItem, obs WorkObservation) []Memor
 		seen[c.SourceID] = true
 
 		// Score based on keyword overlap with observation.
-		c.Relevance = computeRelevance(c, obs)
+		computeRelevance(&c, obs)
 		deduped = append(deduped, c)
 	}
 
@@ -533,8 +534,10 @@ func scoreCandidates(candidates []MemoryPacketItem, obs WorkObservation) []Memor
 	return deduped
 }
 
-// computeRelevance produces a 0-1 score based on keyword overlap and source type.
-func computeRelevance(item MemoryPacketItem, obs WorkObservation) float64 {
+// computeRelevance scores an item 0-1 based on keyword overlap with the
+// observation and writes the score back to item.Relevance. It may also
+// update item.Reason if an exact entity match is found.
+func computeRelevance(item *MemoryPacketItem, obs WorkObservation) {
 	score := 0.3 // base
 
 	// Build a set of observation keywords.
@@ -557,7 +560,8 @@ func computeRelevance(item MemoryPacketItem, obs WorkObservation) float64 {
 	}
 
 	if len(obsWords) == 0 {
-		return score
+		item.Relevance = score
+		return
 	}
 
 	// Count how many observation keywords appear in the item's title + summary.
@@ -586,7 +590,7 @@ func computeRelevance(item MemoryPacketItem, obs WorkObservation) float64 {
 	if score > 1.0 {
 		score = 1.0
 	}
-	return score
+	item.Relevance = score
 }
 
 // tokenize splits a string into lowercase words, filtering short ones.
