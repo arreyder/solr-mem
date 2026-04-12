@@ -25,7 +25,7 @@ Cross-references (who calls what, interface implementations, method sets) are re
 
 | Component | Description |
 |-----------|-------------|
-| `solr-mem-server` | MCP server (stdio or HTTP) with 14 tools |
+| `solr-mem-server` | MCP server (stdio or HTTP) with 17 tools |
 | `solr-mem-indexer` | Git repo indexer with watch mode for incremental updates |
 | Solr 9 | Search engine with two collections: `memories` and `code` |
 
@@ -139,6 +139,84 @@ SOLR_URL_CODE=http://localhost:8983/solr/code \
 | `browse_code` | Navigate the repo > package > file > symbol hierarchy |
 | `code_context` | Get file summary + symbols at a specific location |
 | `code_context_bundle` | Complete working set: symbol + callees + callers + types + package context |
+
+### Broker tools
+
+The memory broker helps worker agents stay informed without interrupting their flow. Agents report observations as they work; the broker asynchronously searches memories and code for relevant context and prepares a compact packet for pickup at checkpoints.
+
+| Tool | Description |
+|------|-------------|
+| `observe_work` | Report what the agent is doing. Returns immediately; triggers async packet build. |
+| `get_memory_packet` | Retrieve a precomputed packet of relevant memories and code context. |
+| `ack_memory_packet` | Acknowledge a packet so the broker can build a fresh one. |
+
+#### observe_work
+
+Accepts a structured work observation:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `run_id` | yes | Unique identifier for this work session |
+| `agent_id` | no | ID of the reporting agent |
+| `repo` | no | Repository being worked on |
+| `phase` | no | Current phase (planning, implementing, debugging, reviewing) |
+| `task` | no | What the agent is working on |
+| `subgoal` | no | Current immediate subgoal |
+| `entities` | no | Key entities: function names, types, packages |
+| `code_refs` | no | File paths or symbol references being touched |
+| `uncertainty` | no | What the agent is unsure about |
+| `next_action` | no | What the agent plans to do next |
+
+Returns immediately with `{status: "accepted", seq, pending}`. The broker queries both Solr collections in the background. If a build is already in progress for this run, the observation is coalesced — the run is marked dirty and a single rebuild happens when the current build finishes.
+
+#### get_memory_packet
+
+Returns the current packet status for a run. The `status` field is always present and takes one of four values:
+
+| Status | Meaning |
+|--------|---------|
+| `ready` | Packet available. Response includes `packet` with ranked items. |
+| `building` | Build in progress. Try again shortly. |
+| `acked` | Previous packet was acknowledged. Send a new observation to trigger a fresh build. |
+| `none` | Run ID not known. Call `observe_work` first. |
+
+When `status` is `ready`, the response includes a `packet` with:
+- `run_id`, `phase`, `delivery` (checkpoint or interrupt)
+- `items[]` — up to 5 ranked, deduplicated items with provenance
+- `observation_count`, `built_from_seq`, `packet_version`, `generated_at`
+
+Each item includes `source` (memory/code), `source_id`, `title`, `summary`, `relevance` (0–1), `reason` (why included), and optional `tags`, `file_path`, `symbol_name`.
+
+The response always includes `current_seq` — compare with `packet.built_from_seq` to check if the packet reflects your latest observation.
+
+#### ack_memory_packet
+
+Clears the current packet for a run. After ack, `get_memory_packet` returns `status: "acked"` until the next observation triggers a new build.
+
+#### Worker checkpoint pattern
+
+```
+1. observe_work(run_id, task, entities, ...)     # report what you're doing
+2. ... continue working ...
+3. observe_work(run_id, subgoal, code_refs, ...) # report progress (coalesced if build in flight)
+4. ... continue working ...
+5. get_memory_packet(run_id)                      # at a checkpoint, check for context
+   → status: "ready"                              # packet available
+   → read packet.items, apply relevant context
+6. ack_memory_packet(run_id)                      # clear packet for fresh generation
+7. ... continue working, repeat from 1 ...
+```
+
+If `get_memory_packet` returns `building`, wait briefly and retry. If it returns `acked` or `none`, send a new `observe_work` to trigger a fresh build.
+
+#### Current limitations
+
+- **In-memory only.** Observations and packets are not persisted to Solr. Server restart clears all broker state. This is acceptable because observations are session-scoped.
+- **No LLM summarization.** Scoring is deterministic keyword overlap between observation fields and Solr results. No LLM calls.
+- **No per-agent isolation.** The broker is partitioned by `run_id` only. Multiple agents sharing a `run_id` will see the same packets.
+- **Interrupt detection is basic.** Delivery is promoted to `interrupt` only when an item scores ≥0.9 with an exact entity match. No hazard pattern matching.
+- **Fixed limits.** Max 5 packet items, 30-minute run TTL, 5-minute sweep interval. Not yet configurable via env vars.
+- **No observation trimming.** The observation list per run grows until the run is swept. Bounded in practice by the 30-minute idle TTL.
 
 ## Claude Code setup
 
