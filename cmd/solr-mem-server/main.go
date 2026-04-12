@@ -33,7 +33,11 @@ func main() {
 	defer cancel()
 	startSweeper(ctx, solrClient)
 
-	s := newServer()
+	// Start memory broker
+	broker := NewBroker(solrClient, codeClient)
+	broker.StartSweeper(ctx)
+
+	s := newServer(broker)
 
 	// Determine transport mode
 	httpAddr := getHTTPAddr()
@@ -44,11 +48,11 @@ func main() {
 	}
 }
 
-func newServer() *mcp.Server {
+func newServer(broker *Broker) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    "solr-mem",
 		Title:   "Solr Memory Store",
-		Version: "0.3.0",
+		Version: "0.4.0",
 	}, &mcp.ServerOptions{
 		Instructions: `AI agent memory store backed by Apache Solr. Provides tools to store, search, update, delete, and list memories with full-text search, highlighting, faceting, and similarity matching.
 
@@ -57,6 +61,14 @@ Memories default to permanent lifetime. Use lifetime parameter to control persis
 - session: tied to a session, cleaned up when session ends
 - ephemeral: auto-expires after 1 hour
 - temporary: auto-expires after 7 days
+
+## Memory Broker
+
+The memory broker helps worker agents stay informed without interrupting their flow:
+1. Call observe_work periodically to report what you're doing
+2. The broker asynchronously searches memories and code for relevant context
+3. Call get_memory_packet at checkpoints to retrieve a compact, ranked bundle
+4. Call ack_memory_packet after processing to allow fresh packet generation
 
 ## Content Format Guidance
 
@@ -87,7 +99,17 @@ Guidelines:
 - Use bulk_store_memories when storing multiple findings at once`,
 	})
 
+	// Register standard tools.
 	for _, def := range ToolSchemas() {
+		def := def
+		tool := *def.Tool
+		mcp.AddTool(s, &tool, func(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+			return invokeTool(ctx, def.Handler, args)
+		})
+	}
+
+	// Register broker tools.
+	for _, def := range BrokerToolSchemas(broker) {
 		def := def
 		tool := *def.Tool
 		mcp.AddTool(s, &tool, func(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {

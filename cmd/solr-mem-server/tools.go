@@ -330,3 +330,67 @@ func ToolSchemas() []ToolDefinition {
 		},
 	}
 }
+
+// BrokerToolSchemas returns tool definitions that require a Broker instance.
+func BrokerToolSchemas(broker *Broker) []ToolDefinition {
+	return []ToolDefinition{
+		{
+			Tool: &mcp.Tool{
+				Name: "observe_work",
+				Description: `Report a work observation to the memory broker.
+
+**When to use**: Call this periodically during a work session to report what you're doing. The broker asynchronously searches memories and code for relevant context and builds a compact packet you can retrieve later with get_memory_packet.
+
+**Required**: run_id (identifies the current work session)
+**Optional**: agent_id, repo, phase, task, subgoal, entities, code_refs, uncertainty, next_action
+
+Returns immediately. Packet building happens in the background.`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"run_id":      prop("string", "Unique identifier for this work run/session (required)"),
+					"agent_id":    prop("string", "ID of the agent reporting"),
+					"repo":        prop("string", "Repository being worked on (URL or path)"),
+					"phase":       prop("string", "Current work phase (e.g. planning, implementing, debugging, reviewing)"),
+					"task":        prop("string", "What the agent is working on"),
+					"subgoal":     prop("string", "Current immediate subgoal"),
+					"entities":    arrayPropSchema(prop("string", "Entity name"), "Key entities: function names, types, packages, concepts"),
+					"code_refs":   arrayPropSchema(prop("string", "Code reference"), "File paths or symbol references being touched"),
+					"uncertainty": prop("string", "What the agent is unsure about"),
+					"next_action": prop("string", "What the agent plans to do next"),
+				}, "run_id"),
+			},
+			Handler: observeWorkTool(broker),
+		},
+		{
+			Tool: &mcp.Tool{
+				Name: "get_memory_packet",
+				Description: `Retrieve a precomputed memory packet for a work run.
+
+**When to use**: Call at natural checkpoints (phase transitions, before commits, when stuck) to get a small bundle of relevant memories and code context. Returns either no packet, a checkpoint packet, or an interrupt packet for high-confidence hazards.
+
+**Required**: run_id
+**Optional**: phase (filter to packets matching this phase)
+
+The packet contains ranked, deduplicated items with provenance (source IDs, reasons for inclusion). Use the items to inform your next steps without re-searching.`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"run_id": prop("string", "The work run/session ID (required)"),
+					"phase":  prop("string", "Current phase — returns packet only if it matches (or if packet is an interrupt)"),
+				}, "run_id"),
+			},
+			Handler: getMemoryPacketTool(broker),
+		},
+		{
+			Tool: &mcp.Tool{
+				Name: "ack_memory_packet",
+				Description: `Acknowledge receipt of a memory packet.
+
+**When to use**: After processing a memory packet from get_memory_packet, call this to clear it so the broker can build a fresh one based on newer observations.
+
+**Required**: run_id`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"run_id": prop("string", "The work run/session ID (required)"),
+				}, "run_id"),
+			},
+			Handler: ackMemoryPacketTool(broker),
+		},
+	}
+}
