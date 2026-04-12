@@ -1,13 +1,13 @@
 ---
 name: solr-mem
-description: Guidance for using the solr-mem MCP server — persistent memory storage and pre-analyzed code search across indexed git repositories. Triggers when solr-mem tools are available.
+description: Guidance for using the solr-mem MCP server — persistent memory storage, pre-analyzed code search, and async memory broker for worker agents. Triggers when solr-mem tools are available.
 disable-model-invocation: false
 user-invocable: true
 ---
 
 # solr-mem MCP Usage Guide
 
-You have access to a solr-mem MCP server with two capabilities: **persistent memory** and **pre-analyzed code search**. This skill teaches you when and how to use each tool effectively.
+You have access to a solr-mem MCP server with three capabilities: **persistent memory**, **pre-analyzed code search**, and an **async memory broker**. This skill teaches you when and how to use each tool effectively.
 
 ---
 
@@ -205,3 +205,92 @@ search_memories(query: "GSI1 consistency")
 ```
 relate_memories(ids: ["mem-abc", "mem-def", "mem-ghi"])
 ```
+
+---
+
+## Async Memory Broker
+
+The broker is for **long-running work sessions** where you want relevant context surfaced automatically without stopping to search. You report what you're doing; the broker searches memories and code in the background and prepares a small packet for you to pick up at checkpoints.
+
+### When to Use the Broker
+
+- Multi-step implementation tasks where the focus area shifts over time
+- Debugging sessions where each step narrows the problem
+- Any work where relevant memories or code context might exist but you don't want to pause to search
+
+### When NOT to Use the Broker
+
+- Quick one-shot questions — just use `search_memories` or `search_code` directly
+- When you already know exactly which symbol or file you need — use `code_context_bundle` or `get_symbol`
+- For storing findings — use `store_memory` or `bulk_store_memories` directly
+
+### Tool Selection
+
+**`observe_work`** — Report what you're doing.
+- Call at natural transitions: starting a subtask, shifting focus, encountering uncertainty
+- Include `entities` (function/type names) and `code_refs` (file paths) — these drive the code search
+- Include `uncertainty` when you're unsure about something — the broker searches for related context
+- Returns immediately with `{status: "accepted", seq, pending}`
+- If a build is already in progress, your observation is coalesced — no redundant work
+
+**`get_memory_packet`** — Check for a precomputed context packet.
+- Call at checkpoints: phase transitions, before commits, when stuck
+- Returns a `status` field — act on it deterministically:
+
+| Status | What it means | What to do |
+|--------|--------------|------------|
+| `ready` | Packet available with ranked items | Read items, apply relevant context, then ack |
+| `building` | Build in progress | Wait briefly, retry |
+| `acked` | Previous packet was consumed | Send a new `observe_work` if you want a fresh one |
+| `none` | Run not known | Call `observe_work` first |
+
+- When `ready`, the `packet` contains up to 5 items, each with `source` (memory/code), `source_id`, `title`, `summary`, `relevance` (0–1), and `reason` (why included)
+- Compare `packet.built_from_seq` with `current_seq` to check if the packet reflects your latest observation
+
+**`ack_memory_packet`** — Clear the current packet.
+- Call after you've consumed a packet's items
+- Allows the broker to build a fresh packet from newer observations
+- If you don't ack, `get_memory_packet` keeps returning the same packet
+
+### Worker Pattern
+
+```
+# Starting a task
+observe_work(run_id: "run-123", task: "fix auth timeout", entities: ["AuthMiddleware"], phase: "debugging")
+
+# ... investigate, read code, make changes ...
+
+# Focus shifts — report updated context
+observe_work(run_id: "run-123", subgoal: "check session expiry logic", code_refs: ["pkg/auth/session.go"], uncertainty: "not sure if TTL is configurable")
+
+# ... continue working ...
+
+# At a checkpoint — check for relevant context
+get_memory_packet(run_id: "run-123")
+# → status: "ready"
+# → packet.items: [{source: "memory", title: "auth session TTL is hardcoded...", reason: "memory search hit"}, ...]
+
+# Apply what's useful, then clear
+ack_memory_packet(run_id: "run-123")
+
+# Continue working, repeat
+```
+
+### Broker Anti-Patterns
+
+- **Don't spam `observe_work` on every tool call.** Call it at meaningful transitions — new subtask, new file, new uncertainty. A few times per work phase is enough.
+- **Don't poll `get_memory_packet` in a tight loop.** Check at natural checkpoints. The build takes a moment; constant polling wastes calls.
+- **Don't ack before reading the packet.** The ack clears the packet — read the items first, then ack.
+- **Don't treat broker packets as a replacement for precise code tools.** The broker surfaces *possibly relevant* context. When you need a specific symbol's call graph, use `code_context_bundle` directly. The broker is for serendipitous discovery, not targeted lookup.
+- **Don't ignore the `status` field.** Always check it before trying to read `packet`. A `building` response is not an error — just retry shortly.
+
+### Freshness and Metadata
+
+Each packet includes metadata for debugging and freshness:
+- `built_from_seq` — which observation sequence the packet was built from
+- `packet_version` — increments each time a new packet is generated for the run
+- `generated_at` — when the build finished
+- `observation_count` — total observations in this run
+- `current_seq` (on the response, not the packet) — the latest observation seq
+
+If `current_seq > packet.built_from_seq`, the packet was built before your latest observation. A rebuild may be in progress, or you can send another `observe_work` to trigger one.

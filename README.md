@@ -1,6 +1,6 @@
 # solr-mem
 
-AI agent memory and code knowledge base backed by Apache Solr. Provides an MCP server with tools for persistent memory storage and pre-analyzed code search across indexed git repositories.
+AI agent memory and code knowledge base backed by Apache Solr. Provides an MCP server with tools for persistent memory storage, pre-analyzed code search across indexed git repositories, and an async memory broker that surfaces relevant context to worker agents at checkpoints.
 
 ## What it does
 
@@ -209,14 +209,13 @@ Clears the current packet for a run. After ack, `get_memory_packet` returns `sta
 
 If `get_memory_packet` returns `building`, wait briefly and retry. If it returns `acked` or `none`, send a new `observe_work` to trigger a fresh build.
 
-#### Current limitations
+#### Broker limitations
 
-- **In-memory only.** Observations and packets are not persisted to Solr. Server restart clears all broker state. This is acceptable because observations are session-scoped.
-- **No LLM summarization.** Scoring is deterministic keyword overlap between observation fields and Solr results. No LLM calls.
-- **No per-agent isolation.** The broker is partitioned by `run_id` only. Multiple agents sharing a `run_id` will see the same packets.
-- **Interrupt detection is basic.** Delivery is promoted to `interrupt` only when an item scores ≥0.9 with an exact entity match. No hazard pattern matching.
-- **Fixed limits.** Max 5 packet items, 30-minute run TTL, 5-minute sweep interval. Not yet configurable via env vars.
-- **No observation trimming.** The observation list per run grows until the run is swept. Bounded in practice by the 30-minute idle TTL.
+- **In-memory only.** Observations and packets are not persisted to Solr. Server restart clears all broker state.
+- **No LLM summarization.** Scoring is deterministic keyword overlap. No LLM calls.
+- **No per-agent isolation.** Partitioned by `run_id` only.
+- **Basic interrupt detection.** Delivery is promoted to `interrupt` only on relevance ≥0.9 with exact entity match.
+- **Fixed limits.** Max 5 packet items, 30-minute run TTL, 5-minute sweep interval.
 
 ## Claude Code setup
 
