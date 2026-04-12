@@ -20,6 +20,24 @@ const (
 	DeliveryInterrupt  DeliveryClass = "interrupt"
 )
 
+// PacketStatus describes the state of a run's packet when queried.
+type PacketStatus string
+
+const (
+	PacketStatusReady    PacketStatus = "ready"    // packet available for consumption
+	PacketStatusBuilding PacketStatus = "building" // build in progress, no packet yet
+	PacketStatusAcked    PacketStatus = "acked"    // packet was consumed and cleared
+	PacketStatusNone     PacketStatus = "none"     // run_id not known
+)
+
+const (
+	// defaultRunTTL is how long a run can be idle before cleanup.
+	defaultRunTTL = 30 * time.Minute
+
+	// defaultRunSweeperInterval is how often the stale-run sweeper runs.
+	defaultRunSweeperInterval = 5 * time.Minute
+)
+
 // WorkObservation is a single structured report from a worker agent.
 type WorkObservation struct {
 	RunID       string   `json:"run_id"`
@@ -58,19 +76,36 @@ type MemoryPacket struct {
 	Items            []MemoryPacketItem `json:"items"`
 	ObservationCount int               `json:"observation_count"`
 	GeneratedAt      time.Time         `json:"generated_at"`
+	BuiltFromSeq     int               `json:"built_from_seq"`
+	PacketVersion    int               `json:"packet_version"`
+}
+
+// PacketResult is the return value of GetPacket, combining status with an optional packet.
+type PacketResult struct {
+	Status PacketStatus `json:"status"`
+	Packet *MemoryPacket `json:"packet,omitempty"`
+	// CurrentSeq is the latest observation sequence number for this run.
+	// Callers can compare with Packet.BuiltFromSeq to check freshness.
+	CurrentSeq int `json:"current_seq"`
 }
 
 // runState tracks the latest observation and built packet for a run.
 type runState struct {
-	observations []WorkObservation
-	packet       *MemoryPacket
-	building     bool // true while async gather is in progress
+	observations   []WorkObservation
+	packet         *MemoryPacket
+	building       bool // true while async gather is in progress
+	dirty          bool // true if new observations arrived during a build
+	acked          bool // true after ack, reset on next packet build
+	seq            int  // monotonic counter, incremented per observation
+	packetVersion  int  // incremented each time a new packet is stashed
+	lastObservedAt time.Time
 }
 
 // Broker accumulates work observations and builds memory packets.
 type Broker struct {
-	mu   sync.Mutex
-	runs map[string]*runState
+	mu     sync.Mutex
+	runs   map[string]*runState
+	runTTL time.Duration
 
 	memClient  *solr.Client
 	codeClient *solr.Client
@@ -80,13 +115,62 @@ type Broker struct {
 func NewBroker(memClient, codeClient *solr.Client) *Broker {
 	return &Broker{
 		runs:       make(map[string]*runState),
+		runTTL:     defaultRunTTL,
 		memClient:  memClient,
 		codeClient: codeClient,
 	}
 }
 
+// StartSweeper launches a background goroutine that cleans up stale runs.
+func (b *Broker) StartSweeper(ctx context.Context) {
+	go func() {
+		log.Printf("broker: run sweeper started (ttl: %s, interval: %s)", b.runTTL, defaultRunSweeperInterval)
+		ticker := time.NewTicker(defaultRunSweeperInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("broker: run sweeper stopped")
+				return
+			case <-ticker.C:
+				b.sweepStaleRuns()
+			}
+		}
+	}()
+}
+
+// sweepStaleRuns removes runs that have been idle longer than runTTL.
+func (b *Broker) sweepStaleRuns() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	now := time.Now()
+	var removed []string
+	for id, rs := range b.runs {
+		if rs.building {
+			continue // don't evict while a build is in flight
+		}
+		if now.Sub(rs.lastObservedAt) > b.runTTL {
+			removed = append(removed, id)
+			delete(b.runs, id)
+		}
+	}
+	if len(removed) > 0 {
+		log.Printf("broker: swept %d stale runs: %v", len(removed), removed)
+	}
+}
+
+// ObserveResult is the return value of Observe.
+type ObserveResult struct {
+	Pending int
+	Seq     int
+}
+
 // Observe records a work observation and kicks off async packet building.
-func (b *Broker) Observe(obs WorkObservation) int {
+// If a build is already in flight, the run is marked dirty and a single
+// rebuild will happen when the current build completes.
+func (b *Broker) Observe(obs WorkObservation) ObserveResult {
 	obs.ReceivedAt = time.Now().UTC()
 
 	b.mu.Lock()
@@ -96,43 +180,61 @@ func (b *Broker) Observe(obs WorkObservation) int {
 		b.runs[obs.RunID] = rs
 	}
 	rs.observations = append(rs.observations, obs)
+	rs.seq++
+	rs.lastObservedAt = obs.ReceivedAt
 	pending := len(rs.observations)
+	seq := rs.seq
 
-	// Only start building if not already in progress.
-	if !rs.building {
-		rs.building = true
-		// Snapshot the latest observation for the goroutine.
-		latest := obs
+	if rs.building {
+		// A build is in flight — mark dirty so it rebuilds when done.
+		rs.dirty = true
 		b.mu.Unlock()
-		go b.buildPacket(latest)
 	} else {
+		rs.building = true
+		rs.dirty = false
+		latest := obs
+		buildSeq := rs.seq
 		b.mu.Unlock()
+		go b.buildPacket(latest, buildSeq)
 	}
 
-	return pending
+	return ObserveResult{Pending: pending, Seq: seq}
 }
 
-// GetPacket returns the most recent packet for a run, or nil if none is ready.
-func (b *Broker) GetPacket(runID, phase string) *MemoryPacket {
+// GetPacket returns the current packet status and packet (if ready) for a run.
+func (b *Broker) GetPacket(runID, phase string) PacketResult {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	rs, ok := b.runs[runID]
 	if !ok {
-		return nil
+		return PacketResult{Status: PacketStatusNone}
 	}
-	pkt := rs.packet
-	if pkt == nil {
-		return nil
+
+	if rs.packet == nil {
+		if rs.acked {
+			return PacketResult{Status: PacketStatusAcked, CurrentSeq: rs.seq}
+		}
+		if rs.building {
+			return PacketResult{Status: PacketStatusBuilding, CurrentSeq: rs.seq}
+		}
+		return PacketResult{Status: PacketStatusNone, CurrentSeq: rs.seq}
 	}
+
 	// If caller specified a phase, only return if it matches or packet is interrupt.
-	if phase != "" && pkt.Phase != phase && pkt.Delivery != DeliveryInterrupt {
-		return nil
+	if phase != "" && rs.packet.Phase != phase && rs.packet.Delivery != DeliveryInterrupt {
+		// Packet exists but doesn't match the requested phase.
+		// Still report building if a rebuild is in progress.
+		if rs.building {
+			return PacketResult{Status: PacketStatusBuilding, CurrentSeq: rs.seq}
+		}
+		return PacketResult{Status: PacketStatusReady, Packet: rs.packet, CurrentSeq: rs.seq}
 	}
-	return pkt
+
+	return PacketResult{Status: PacketStatusReady, Packet: rs.packet, CurrentSeq: rs.seq}
 }
 
-// AckPacket clears the current packet for a run so the next get returns nil
+// AckPacket clears the current packet for a run so the next get returns "acked"
 // until a new packet is built.
 func (b *Broker) AckPacket(runID string) bool {
 	b.mu.Lock()
@@ -146,12 +248,54 @@ func (b *Broker) AckPacket(runID string) bool {
 		return false
 	}
 	rs.packet = nil
+	rs.acked = true
 	return true
 }
 
 // buildPacket runs in a goroutine. It queries Solr for relevant memories and
-// code, scores/dedupes the results, and stashes a packet.
-func (b *Broker) buildPacket(obs WorkObservation) {
+// code, scores/dedupes the results, and stashes a packet. If the run was
+// marked dirty during this build, it rebuilds once with the latest observation.
+func (b *Broker) buildPacket(obs WorkObservation, buildSeq int) {
+	pkt := b.doBuild(obs, buildSeq)
+
+	for {
+		b.mu.Lock()
+		rs, ok := b.runs[obs.RunID]
+		if !ok {
+			b.mu.Unlock()
+			return
+		}
+
+		pkt.ObservationCount = len(rs.observations)
+		rs.packetVersion++
+		pkt.PacketVersion = rs.packetVersion
+		rs.packet = pkt
+		rs.acked = false // new packet clears acked state
+
+		if rs.dirty {
+			// New observations arrived during the build. Rebuild once
+			// using the latest observation.
+			rs.dirty = false
+			latest := rs.observations[len(rs.observations)-1]
+			rebuildSeq := rs.seq
+			b.mu.Unlock()
+
+			log.Printf("broker: rebuilding packet for run %s (dirty during build)", obs.RunID)
+			pkt = b.doBuild(latest, rebuildSeq)
+			continue
+		}
+
+		rs.building = false
+		b.mu.Unlock()
+
+		log.Printf("broker: built packet for run %s: %d items, delivery=%s, seq=%d, version=%d",
+			obs.RunID, len(pkt.Items), pkt.Delivery, pkt.BuiltFromSeq, pkt.PacketVersion)
+		return
+	}
+}
+
+// doBuild performs the actual Solr queries, scoring, and packet assembly.
+func (b *Broker) doBuild(obs WorkObservation, buildSeq int) *MemoryPacket {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -194,27 +338,16 @@ func (b *Broker) buildPacket(obs WorkObservation) {
 	// 6. Build summary.
 	summary := buildPacketSummary(scored, obs)
 
-	pkt := &MemoryPacket{
-		RunID:            obs.RunID,
-		Phase:            obs.Phase,
-		Delivery:         delivery,
-		Summary:          summary,
-		Items:            scored,
-		ObservationCount: 0, // filled below under lock
-		GeneratedAt:      time.Now().UTC(),
+	return &MemoryPacket{
+		RunID:        obs.RunID,
+		Phase:        obs.Phase,
+		Delivery:     delivery,
+		Summary:      summary,
+		Items:        scored,
+		GeneratedAt:  time.Now().UTC(),
+		BuiltFromSeq: buildSeq,
+		// ObservationCount and PacketVersion are set by the caller under lock.
 	}
-
-	b.mu.Lock()
-	rs, ok := b.runs[obs.RunID]
-	if ok {
-		pkt.ObservationCount = len(rs.observations)
-		rs.packet = pkt
-		rs.building = false
-	}
-	b.mu.Unlock()
-
-	log.Printf("broker: built packet for run %s: %d items, delivery=%s",
-		obs.RunID, len(scored), delivery)
 }
 
 // searchMemories queries the memories collection for items relevant to the observation.
@@ -223,9 +356,6 @@ func (b *Broker) searchMemories(ctx context.Context, queryTerms string, obs Work
 		Query:     queryTerms,
 		Rows:      10,
 		Highlight: false,
-	}
-	if obs.AgentID != "" {
-		// Include memories from any agent, but we could filter later.
 	}
 
 	resp, err := b.memClient.Query(ctx, params)

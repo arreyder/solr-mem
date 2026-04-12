@@ -35,6 +35,7 @@ func main() {
 
 	// Start memory broker
 	broker := NewBroker(solrClient, codeClient)
+	broker.StartSweeper(ctx)
 
 	s := newServer(broker)
 

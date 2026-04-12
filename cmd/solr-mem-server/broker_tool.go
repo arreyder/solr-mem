@@ -27,13 +27,15 @@ func observeWorkTool(broker *Broker) ToolHandler {
 			NextAction:  getString(args, "next_action"),
 		}
 
-		pending := broker.Observe(obs)
+		result := broker.Observe(obs)
 
 		return ToolOutput{
-			Text: fmt.Sprintf("Observation recorded for run %s (%d pending). Packet building in background.", runID, pending),
+			Text: fmt.Sprintf("Observation recorded for run %s (seq %d, %d pending). Packet building in background.",
+				runID, result.Seq, result.Pending),
 			Structured: map[string]any{
 				"run_id":  runID,
-				"pending": pending,
+				"seq":     result.Seq,
+				"pending": result.Pending,
 				"status":  "accepted",
 			},
 		}, nil
@@ -48,21 +50,33 @@ func getMemoryPacketTool(broker *Broker) ToolHandler {
 		}
 		phase := getString(args, "phase")
 
-		pkt := broker.GetPacket(runID, phase)
-		if pkt == nil {
+		pr := broker.GetPacket(runID, phase)
+
+		switch pr.Status {
+		case PacketStatusReady:
 			return ToolOutput{
-				Text: fmt.Sprintf("No packet ready for run %s", runID),
-				Structured: map[string]any{
-					"run_id": runID,
-					"status": "none",
-				},
+				Text:       formatPacket(pr.Packet),
+				Structured: formatPacketResult(runID, pr),
+			}, nil
+
+		case PacketStatusBuilding:
+			return ToolOutput{
+				Text: fmt.Sprintf("Packet for run %s is still building (seq %d). Try again shortly.", runID, pr.CurrentSeq),
+				Structured: formatPacketResult(runID, pr),
+			}, nil
+
+		case PacketStatusAcked:
+			return ToolOutput{
+				Text: fmt.Sprintf("Packet for run %s was already acknowledged (seq %d). Send a new observation to generate a fresh packet.", runID, pr.CurrentSeq),
+				Structured: formatPacketResult(runID, pr),
+			}, nil
+
+		default: // PacketStatusNone
+			return ToolOutput{
+				Text: fmt.Sprintf("No packet for run %s. Call observe_work first.", runID),
+				Structured: formatPacketResult(runID, pr),
 			}, nil
 		}
-
-		return ToolOutput{
-			Text:       formatPacket(pkt),
-			Structured: pkt,
-		}, nil
 	}
 }
 
@@ -91,12 +105,26 @@ func ackMemoryPacketTool(broker *Broker) ToolHandler {
 	}
 }
 
+// formatPacketResult builds the structured response for get_memory_packet.
+func formatPacketResult(runID string, pr PacketResult) map[string]any {
+	result := map[string]any{
+		"run_id":      runID,
+		"status":      string(pr.Status),
+		"current_seq": pr.CurrentSeq,
+	}
+	if pr.Packet != nil {
+		result["packet"] = pr.Packet
+	}
+	return result
+}
+
 func formatPacket(pkt *MemoryPacket) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("=== Memory Packet [%s] ===\n", pkt.Delivery))
 	sb.WriteString(fmt.Sprintf("Run: %s | Phase: %s | Observations: %d\n", pkt.RunID, pkt.Phase, pkt.ObservationCount))
-	sb.WriteString(fmt.Sprintf("Generated: %s\n\n", pkt.GeneratedAt.Format("15:04:05")))
+	sb.WriteString(fmt.Sprintf("Generated: %s | Seq: %d | Version: %d\n\n",
+		pkt.GeneratedAt.Format("15:04:05"), pkt.BuiltFromSeq, pkt.PacketVersion))
 
 	if pkt.Summary != "" {
 		sb.WriteString(pkt.Summary)
