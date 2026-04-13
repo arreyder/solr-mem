@@ -21,8 +21,19 @@ type Config struct {
 
 // RepoConfig describes a single repository to index.
 type RepoConfig struct {
-	Path   string // Local filesystem path or remote URL
-	Branch string // Branch to track (overrides default)
+	Path     string   // Local filesystem path or remote URL
+	Branch   string   // Branch to track (overrides default)
+	Features []string // Optional features to enable (e.g., "frontend-selectors")
+}
+
+// HasFeature returns true if the named feature is enabled for this repo.
+func (r RepoConfig) HasFeature(name string) bool {
+	for _, f := range r.Features {
+		if f == name {
+			return true
+		}
+	}
+	return false
 }
 
 // LoadConfig reads configuration from environment variables.
