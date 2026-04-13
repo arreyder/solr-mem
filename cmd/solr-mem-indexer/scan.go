@@ -20,8 +20,9 @@ type ScanConfig struct {
 
 // ScanRepo is a single repo entry in a .solr-mem.yaml file.
 type ScanRepo struct {
-	Path   string `yaml:"path"`
-	Branch string `yaml:"branch,omitempty"`
+	Path     string   `yaml:"path"`
+	Branch   string   `yaml:"branch,omitempty"`
+	Features []string `yaml:"features,omitempty"`
 }
 
 // configFileState tracks a discovered config file and its last modification time.
@@ -100,8 +101,9 @@ func parseConfigFile(path, baseDir, defaultBranch string) ([]RepoConfig, error) 
 			branch = defaultBranch
 		}
 		repos = append(repos, RepoConfig{
-			Path:   repoPath,
-			Branch: branch,
+			Path:     repoPath,
+			Branch:   branch,
+			Features: r.Features,
 		})
 	}
 

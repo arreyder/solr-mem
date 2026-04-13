@@ -255,6 +255,15 @@ func (idx *Indexer) fullIndex(ctx context.Context, repoPath, repoID string, repo
 		log.Printf("Warning: cross-reference updates had errors: %v", err)
 	}
 
+	// Pass 3: Frontend selector analysis (opt-in)
+	if repo.HasFeature("frontend-selectors") {
+		log.Printf("Running frontend selector analysis for %s", repoPath)
+		fa := NewFrontendAnalyzer(idx.solr)
+		if err := fa.AnalyzeRepo(ctx, repoPath, repoID, commitSHA); err != nil {
+			log.Printf("Warning: frontend selector analysis failed: %v", err)
+		}
+	}
+
 	log.Printf("Full index complete: %d files, %d packages", len(files), len(packages))
 	idx.writeStatus(ctx, repoID, repo.Path, commitSHA, "complete", fmt.Sprintf("%d files, %d packages", len(files), len(packages)), len(files), len(files))
 	return nil
@@ -346,6 +355,20 @@ func (idx *Indexer) incrementalIndex(ctx context.Context, repoPath, repoID strin
 		"updated_at": now.Format(time.RFC3339),
 	}); err != nil {
 		log.Printf("Warning: failed to update repo doc: %v", err)
+	}
+
+	// Frontend selector analysis for changed files (opt-in)
+	if repo.HasFeature("frontend-selectors") {
+		var changedPaths []string
+		for _, change := range changed {
+			changedPaths = append(changedPaths, change.path)
+		}
+		if len(changedPaths) > 0 {
+			fa := NewFrontendAnalyzer(idx.solr)
+			if err := fa.AnalyzeChangedFiles(ctx, repoPath, repoID, commitSHA, changedPaths); err != nil {
+				log.Printf("Warning: frontend selector analysis failed: %v", err)
+			}
+		}
 	}
 
 	log.Printf("Incremental index complete: %d files changed, %d packages affected", len(changed), len(affectedPackages))
