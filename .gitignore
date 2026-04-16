@@ -25,4 +25,4 @@ Thumbs.db
 
 # Solr data (managed by Docker volume)
 solr-data/
-solr-mem-indexer
+/solr-mem-indexer

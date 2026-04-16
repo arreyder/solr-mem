@@ -12,6 +12,12 @@
 
   <indexConfig>
     <lockType>${solr.lock.type:native}</lockType>
+    <ramBufferSizeMB>256</ramBufferSizeMB>
+    <mergePolicyFactory class="solr.TieredMergePolicyFactory">
+      <int name="maxMergeAtOnce">6</int>
+      <double name="segmentsPerTier">6</double>
+      <double name="forceMergeDeletesPctAllowed">5.0</double>
+    </mergePolicyFactory>
   </indexConfig>
 
   <!-- Auto-commit: soft every 1s, hard every 15s -->
@@ -28,6 +34,15 @@
       <maxTime>${solr.autoSoftCommit.maxTime:5000}</maxTime>
     </autoSoftCommit>
   </updateHandler>
+
+  <!-- Caches: critical for 3M+ doc collection -->
+  <query>
+    <filterCache class="solr.CaffeineCache" size="1024" initialSize="256" autowarmCount="128" />
+    <queryResultCache class="solr.CaffeineCache" size="512" initialSize="128" autowarmCount="64" />
+    <documentCache class="solr.CaffeineCache" size="4096" initialSize="1024" />
+    <maxBooleanClauses>${solr.max.booleanClauses:1024}</maxBooleanClauses>
+    <enableLazyFieldLoading>true</enableLazyFieldLoading>
+  </query>
 
   <!-- Search handler: code-optimized boosting -->
   <requestHandler name="/select" class="solr.SearchHandler">
@@ -47,13 +62,8 @@
       <str name="hl.tag.pre">&lt;em&gt;</str>
       <str name="hl.tag.post">&lt;/em&gt;</str>
 
-      <!-- Faceting -->
-      <str name="facet">on</str>
-      <str name="facet.field">language</str>
-      <str name="facet.field">doc_level</str>
-      <str name="facet.field">symbol_type</str>
-      <str name="facet.field">repo_id</str>
-      <str name="facet.field">package_name</str>
+      <!-- Faceting: off by default, enabled per-request -->
+      <str name="facet">false</str>
       <str name="facet.mincount">1</str>
     </lst>
   </requestHandler>

@@ -21,10 +21,11 @@ type FrontendAnalyzer struct {
 
 // SelectorInfo describes a single extracted selector.
 type SelectorInfo struct {
-	Type    string // "data-testid", "aria-label", "form-input", "role", "href"
+	Type    string // "data-testid", "aria-label", "form-input", "role", "href", "intl-message", "aria-haspopup", "tab-id"
 	Value   string
 	Line    int
-	Dynamic bool // true if value contains interpolation (e.g., ${...})
+	Dynamic bool   // true if value contains interpolation (e.g., ${...})
+	Element string // optional: element type context (e.g., "button", "FormattedMessage")
 }
 
 // ComponentSelectors holds all selectors extracted from a single file.
@@ -56,6 +57,32 @@ var (
 
 	// Link elements that make a nearby href= attribute relevant.
 	reLinkElement = regexp.MustCompile(`(?i)<(?:a|Link|NavLink|C1Link|C1LinkButton)\b`)
+
+	// intl.formatMessage({...defaultMessage: "value"...}) — inline or assigned to variable.
+	// Captures the defaultMessage value from intl.formatMessage calls.
+	reIntlFormatMessage = regexp.MustCompile(`intl\.formatMessage\(\s*\{[^}]*defaultMessage:\s*['"]((?:[^'\\"]|\\.)*)['"]`)
+
+	// <FormattedMessage ... defaultMessage="value" ... /> — JSX component (single-line).
+	reFormattedMessage = regexp.MustCompile(`<FormattedMessage\b[^>]*defaultMessage\s*=\s*['"]((?:[^'\\"]|\\.)*)['"]`)
+
+	// defaultMessage="value" on its own line (for multiline FormattedMessage).
+	reDefaultMessageAttr = regexp.MustCompile(`^\s*defaultMessage\s*=\s*['"]((?:[^'\\"]|\\.)*)['"]`)
+
+	// Detects a <FormattedMessage opening on a line (possibly multiline).
+	reFormattedMessageOpen = regexp.MustCompile(`<FormattedMessage\b`)
+
+	// aria-label={intl.formatMessage({...defaultMessage: "value"...})}
+	reAriaLabelIntl = regexp.MustCompile(`aria-label\s*=\s*\{\s*intl\.formatMessage\(\s*\{[^}]*defaultMessage:\s*['"]((?:[^'\\"]|\\.)*)['"]`)
+
+	// aria-haspopup="value" or aria-haspopup={'value'} or 'aria-haspopup': 'value'
+	reAriaHasPopup     = regexp.MustCompile(`aria-haspopup\s*=\s*(?:"([^"]+)"|'([^']+)'|\{['"]((?:[^'\\"]|\\.)*)['"]\})`)
+	reAriaHasPopupProp = regexp.MustCompile(`['"]\s*aria-haspopup['"]\s*:\s*['"]((?:[^'\\"]|\\.)*)['"]\s`)
+
+	// Tab ID patterns: id={`prefix-tab-${key}`} or data-testid={`prefix-tab-${key}`}
+	reTabID = regexp.MustCompile("(?:id|data-testid)\\s*=\\s*\\{\\s*`([^`]*-tab(?:panel)?-[^`]*)`\\s*\\}")
+
+	// Element context: detect enclosing JSX element on same or nearby lines.
+	reJSXElement = regexp.MustCompile(`<(\w+)\b`)
 )
 
 // isFrontendFile returns true for TSX/TS/JSX files.
@@ -189,12 +216,37 @@ func extractSelectors(relPath string, content []byte) *ComponentSelectors {
 		}
 
 		// aria-label - always relevant.
-		for _, val := range matchAttr(reAriaLabel, reAriaLabelProp, line) {
+		// First check for aria-label={intl.formatMessage({defaultMessage: "..."})}
+		ariaLabelIntlSeen := make(map[string]bool)
+		for _, m := range reAriaLabelIntl.FindAllStringSubmatch(line, -1) {
+			val := m[1]
+			ariaLabelIntlSeen[val] = true
 			cs.Selectors = append(cs.Selectors, SelectorInfo{
 				Type:    "aria-label",
 				Value:   val,
 				Line:    lineNum,
-				Dynamic: strings.Contains(val, "${"),
+				Element: nearestElement(lines, i),
+			})
+		}
+		// Then match literal aria-label values (skip if already captured via intl).
+		for _, val := range matchAttr(reAriaLabel, reAriaLabelProp, line) {
+			if !ariaLabelIntlSeen[val] {
+				cs.Selectors = append(cs.Selectors, SelectorInfo{
+					Type:    "aria-label",
+					Value:   val,
+					Line:    lineNum,
+					Dynamic: strings.Contains(val, "${"),
+				})
+			}
+		}
+
+		// aria-haspopup - relevant for menu triggers.
+		for _, val := range matchAttr(reAriaHasPopup, reAriaHasPopupProp, line) {
+			cs.Selectors = append(cs.Selectors, SelectorInfo{
+				Type:    "aria-haspopup",
+				Value:   val,
+				Line:    lineNum,
+				Element: nearestElement(lines, i),
 			})
 		}
 
@@ -209,6 +261,55 @@ func extractSelectors(relPath string, content []byte) *ComponentSelectors {
 				Type:  "role",
 				Value: val,
 				Line:  lineNum,
+			})
+		}
+
+		// intl.formatMessage({defaultMessage: "..."}) — standalone calls (not already captured as aria-label).
+		for _, m := range reIntlFormatMessage.FindAllStringSubmatch(line, -1) {
+			val := m[1]
+			if ariaLabelIntlSeen[val] {
+				continue // already captured as aria-label
+			}
+			cs.Selectors = append(cs.Selectors, SelectorInfo{
+				Type:    "intl-message",
+				Value:   val,
+				Line:    lineNum,
+				Element: nearestElement(lines, i),
+			})
+		}
+
+		// <FormattedMessage defaultMessage="..." /> — single-line case.
+		for _, m := range reFormattedMessage.FindAllStringSubmatch(line, -1) {
+			cs.Selectors = append(cs.Selectors, SelectorInfo{
+				Type:    "intl-message",
+				Value:   m[1],
+				Line:    lineNum,
+				Element: "FormattedMessage",
+			})
+		}
+
+		// Multiline <FormattedMessage>: defaultMessage= on its own line,
+		// with <FormattedMessage on a preceding line (within 4 lines).
+		if reFormattedMessage.FindStringSubmatch(line) == nil {
+			if m := reDefaultMessageAttr.FindStringSubmatch(line); m != nil {
+				if hasNearbyPattern(lines, i, 4, reFormattedMessageOpen) {
+					cs.Selectors = append(cs.Selectors, SelectorInfo{
+						Type:    "intl-message",
+						Value:   m[1],
+						Line:    lineNum,
+						Element: "FormattedMessage",
+					})
+				}
+			}
+		}
+
+		// Tab ID patterns: id={`prefix-tab-key`} or data-testid={`prefix-tab-key`}
+		for _, m := range reTabID.FindAllStringSubmatch(line, -1) {
+			cs.Selectors = append(cs.Selectors, SelectorInfo{
+				Type:    "tab-id",
+				Value:   m[1],
+				Line:    lineNum,
+				Dynamic: strings.Contains(m[1], "${"),
 			})
 		}
 
@@ -255,6 +356,22 @@ func extractSelectors(relPath string, content []byte) *ComponentSelectors {
 	}
 
 	return cs
+}
+
+// nearestElement looks backwards from lineIdx for the nearest JSX element opening tag.
+func nearestElement(lines []string, lineIdx int) string {
+	// Check current line and up to 3 lines back for a JSX element.
+	start := lineIdx - 3
+	if start < 0 {
+		start = 0
+	}
+	for i := lineIdx; i >= start; i-- {
+		if m := reJSXElement.FindAllStringSubmatch(lines[i], -1); len(m) > 0 {
+			// Return the last element on the line (closest to the attribute).
+			return m[len(m)-1][1]
+		}
+	}
+	return ""
 }
 
 // matchAttr extracts attribute values using a JSX attribute regex and a prop syntax regex.
@@ -354,7 +471,7 @@ func buildSelectorYAML(cs *ComponentSelectors) string {
 	}
 
 	// Stable ordering for reproducibility.
-	typeOrder := []string{"data-testid", "aria-label", "role", "form-input", "href"}
+	typeOrder := []string{"data-testid", "aria-label", "aria-haspopup", "intl-message", "tab-id", "role", "form-input", "href"}
 
 	sb.WriteString("selectors:\n")
 	for _, t := range typeOrder {
@@ -366,6 +483,9 @@ func buildSelectorYAML(cs *ComponentSelectors) string {
 		for _, s := range sels {
 			sb.WriteString(fmt.Sprintf("    - value: %q\n", s.Value))
 			sb.WriteString(fmt.Sprintf("      line: %d\n", s.Line))
+			if s.Element != "" {
+				sb.WriteString(fmt.Sprintf("      element: %s\n", s.Element))
+			}
 			if s.Dynamic {
 				sb.WriteString("      dynamic: true\n")
 			}
