@@ -17,9 +17,10 @@ type Document struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 	ExpiresAt  string    `json:"expires_at,omitempty"`
 	Lifetime   string    `json:"lifetime,omitempty"`
-	SessionID  string    `json:"session_id,omitempty"`
-	RelatedIDs []string  `json:"related_ids,omitempty"`
-	Format     string    `json:"format,omitempty"`
+	SessionID   string    `json:"session_id,omitempty"`
+	RelatedIDs  []string  `json:"related_ids,omitempty"`
+	Format      string    `json:"format,omitempty"`
+	ContentHash string    `json:"content_hash,omitempty"`
 }
 
 // QueryParams holds parameters for a Solr search query.
