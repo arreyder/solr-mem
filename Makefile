@@ -1,4 +1,4 @@
-.PHONY: build build-indexer build-bench install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall launchd-install launchd-install-server launchd-install-indexer launchd-uninstall skill-install skill-uninstall bench
+.PHONY: build build-indexer build-bench build-backfill install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall launchd-install launchd-install-server launchd-install-indexer launchd-uninstall skill-install skill-uninstall bench backfill backfill-dry
 
 # Go targets
 build:
@@ -7,10 +7,22 @@ build:
 build-indexer:
 	go build -o bin/solr-mem-indexer ./cmd/solr-mem-indexer
 
-build-all: build build-indexer build-bench
+build-all: build build-indexer build-bench build-backfill
 
 build-bench:
 	go build -o bin/solr-mem-bench ./cmd/solr-mem-bench
+
+build-backfill:
+	go build -o bin/solr-mem-backfill ./cmd/solr-mem-backfill
+
+# Backfill embeddings on existing memories. Requires OPENAI_API_KEY.
+# Use backfill-dry to preview without writing.
+BACKFILL_URL ?= http://pax89.local:8983/solr/memories
+backfill: build-backfill
+	./bin/solr-mem-backfill -solr-url $(BACKFILL_URL)
+
+backfill-dry: build-backfill
+	./bin/solr-mem-backfill -solr-url $(BACKFILL_URL) -dry-run
 
 # Retrieval benchmark. Seeds the memories collection with namespaced bench-*
 # docs (safe to run against a live collection — only touches bench-* IDs) and

@@ -27,3 +27,4 @@ Thumbs.db
 solr-data/
 /solr-mem-indexer
 /solr-mem-bench
+/solr-mem-backfill
