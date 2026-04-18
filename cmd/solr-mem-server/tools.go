@@ -57,7 +57,7 @@ func ToolSchemas() []ToolDefinition {
 **When to use**: Find relevant memories by content, tags, type, agent, or time range. Uses edismax with field boosting (content^3, title^2, tags^1.5) and recency boost.
 
 **Required**: query (search text)
-**Optional**: agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime`,
+**Optional**: agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"query":          prop("string", "Full-text search query (required)"),
 					"agent_id":       prop("string", "Filter by agent ID"),
@@ -72,6 +72,7 @@ func ToolSchemas() []ToolDefinition {
 					"facet":          prop("boolean", "Include facet counts (default: false)"),
 					"session_id":     prop("string", "Filter by session ID"),
 					"lifetime":       prop("string", "Filter by lifetime (permanent, session, ephemeral, temporary)"),
+					"session_cap":    integerProp("Max hits per session_id after ranking (default 3, 0 = disable)", intPtr(0), intPtr(100)),
 				}, "query"),
 			},
 			Handler: searchMemoriesTool,

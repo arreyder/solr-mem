@@ -36,6 +36,11 @@ const (
 
 	// defaultRunSweeperInterval is how often the stale-run sweeper runs.
 	defaultRunSweeperInterval = 5 * time.Minute
+
+	// brokerSessionCap is the max number of memory items per session_id in a
+	// single packet. Code items (no session) are unaffected. With maxItems=5
+	// this leaves room for at least 3 distinct sessions (or a mix with code).
+	brokerSessionCap = 2
 )
 
 // WorkObservation is a single structured report from a worker agent.
@@ -65,6 +70,7 @@ type MemoryPacketItem struct {
 	MemoryType string  `json:"memory_type,omitempty"`
 	FilePath   string  `json:"file_path,omitempty"`
 	SymbolName string  `json:"symbol_name,omitempty"`
+	SessionID  string  `json:"session_id,omitempty"` // populated for memory items; used for session-diversified ranking
 }
 
 // MemoryPacket is a precomputed bundle of relevant context for a worker agent.
@@ -320,13 +326,17 @@ func (b *Broker) doBuild(obs WorkObservation, buildSeq int) *MemoryPacket {
 	// 3. Score and dedupe.
 	scored := scoreCandidates(candidates, obs)
 
-	// 4. Pick top items (max 5).
+	// 4. Cap per session so one chatty session can't dominate the packet.
+	// Code items have empty SessionID and are unaffected.
+	scored = diversifyBySession(scored, func(i MemoryPacketItem) string { return i.SessionID }, brokerSessionCap)
+
+	// 5. Pick top items (max 5).
 	const maxItems = 5
 	if len(scored) > maxItems {
 		scored = scored[:maxItems]
 	}
 
-	// 5. Determine delivery class.
+	// 6. Determine delivery class.
 	delivery := DeliveryCheckpoint
 	for _, item := range scored {
 		// Promote to interrupt if we found a high-relevance hazard or prior solution.
@@ -336,7 +346,7 @@ func (b *Broker) doBuild(obs WorkObservation, buildSeq int) *MemoryPacket {
 		}
 	}
 
-	// 6. Build summary.
+	// 7. Build summary.
 	summary := buildPacketSummary(scored, obs)
 
 	return &MemoryPacket{
@@ -371,6 +381,7 @@ func (b *Broker) searchMemories(ctx context.Context, queryTerms string, obs Work
 		title, _ := doc["title"].(string)
 		content, _ := doc["content"].(string)
 		memType, _ := doc["memory_type"].(string)
+		sessionID, _ := doc["session_id"].(string)
 		tags := getStringSliceFromDoc(doc, "tags")
 
 		// Truncate content for summary.
@@ -388,6 +399,7 @@ func (b *Broker) searchMemories(ctx context.Context, queryTerms string, obs Work
 			Reason:     "memory search hit",
 			Tags:       tags,
 			MemoryType: memType,
+			SessionID:  sessionID,
 		})
 	}
 	return items
