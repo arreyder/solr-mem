@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/arreyder/solr-mem/internal/privacy"
 	"github.com/arreyder/solr-mem/internal/solr"
 	"github.com/google/uuid"
 )
@@ -26,6 +27,7 @@ func bulkStoreMemoriesTool(ctx context.Context, args map[string]any) (any, error
 	now := time.Now().UTC()
 	var docs []solr.Document
 	var ids []string
+	totalScrubbed := 0
 
 	for i, raw := range memories {
 		m, ok := raw.(map[string]any)
@@ -49,16 +51,26 @@ func bulkStoreMemoriesTool(ctx context.Context, args map[string]any) (any, error
 			format = "prose"
 		}
 
+		title := getString(m, "title")
+		metadata := getString(m, "metadata")
+		scrubbedContent, contentHits := scrubString(content)
+		scrubbedTitle, titleHits := scrubString(title)
+		allHits := privacy.MergeHits(contentHits, titleHits)
+		metadata = privacy.MergeMetadata(metadata, allHits)
+		for _, v := range allHits {
+			totalScrubbed += v
+		}
+
 		docs = append(docs, solr.Document{
 			ID:         id,
 			AgentID:    getString(m, "agent_id"),
 			MemoryType: getString(m, "memory_type"),
-			Content:    content,
-			Title:      getString(m, "title"),
+			Content:    scrubbedContent,
+			Title:      scrubbedTitle,
 			Tags:       getStringSlice(m, "tags"),
 			Source:     getString(m, "source"),
 			Importance: getFloat(m, "importance", 0.5),
-			Metadata:   getString(m, "metadata"),
+			Metadata:   metadata,
 			CreatedAt:  now,
 			UpdatedAt:  now,
 			ExpiresAt:  expiresAt,
@@ -73,11 +85,18 @@ func bulkStoreMemoriesTool(ctx context.Context, args map[string]any) (any, error
 		return nil, fmt.Errorf("failed to bulk store memories: %w", err)
 	}
 
+	text := fmt.Sprintf("Successfully stored %d memories.\nIDs: %v", len(docs), ids)
+	structured := map[string]any{
+		"count": len(docs),
+		"ids":   ids,
+	}
+	if totalScrubbed > 0 {
+		text += fmt.Sprintf("\nPrivacy: redacted %d secret(s) across all memories", totalScrubbed)
+		structured["scrub_count"] = totalScrubbed
+	}
+
 	return ToolOutput{
-		Text: fmt.Sprintf("Successfully stored %d memories.\nIDs: %v", len(docs), ids),
-		Structured: map[string]any{
-			"count": len(docs),
-			"ids":   ids,
-		},
+		Text:       text,
+		Structured: structured,
 	}, nil
 }

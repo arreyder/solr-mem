@@ -14,17 +14,24 @@ func observeWorkTool(broker *Broker) ToolHandler {
 			return nil, fmt.Errorf("run_id is required")
 		}
 
+		// Scrub free-text fields; entities/code_refs/repo/phase are symbolic
+		// and unlikely to carry secrets.
+		task, _ := scrubString(getString(args, "task"))
+		subgoal, _ := scrubString(getString(args, "subgoal"))
+		uncertainty, _ := scrubString(getString(args, "uncertainty"))
+		nextAction, _ := scrubString(getString(args, "next_action"))
+
 		obs := WorkObservation{
 			RunID:       runID,
 			AgentID:     getString(args, "agent_id"),
 			Repo:        getString(args, "repo"),
 			Phase:       getString(args, "phase"),
-			Task:        getString(args, "task"),
-			Subgoal:     getString(args, "subgoal"),
+			Task:        task,
+			Subgoal:     subgoal,
 			Entities:    getStringSlice(args, "entities"),
 			CodeRefs:    getStringSlice(args, "code_refs"),
-			Uncertainty: getString(args, "uncertainty"),
-			NextAction:  getString(args, "next_action"),
+			Uncertainty: uncertainty,
+			NextAction:  nextAction,
 		}
 
 		result := broker.Observe(obs)
