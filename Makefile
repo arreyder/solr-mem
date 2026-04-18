@@ -1,4 +1,4 @@
-.PHONY: build build-indexer install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall launchd-install launchd-install-server launchd-install-indexer launchd-uninstall skill-install skill-uninstall
+.PHONY: build build-indexer build-bench install install-indexer test tidy run dev up down logs reset docker-build docker-up config systemd-install systemd-uninstall indexer-install indexer-uninstall launchd-install launchd-install-server launchd-install-indexer launchd-uninstall skill-install skill-uninstall bench
 
 # Go targets
 build:
@@ -7,7 +7,19 @@ build:
 build-indexer:
 	go build -o bin/solr-mem-indexer ./cmd/solr-mem-indexer
 
-build-all: build build-indexer
+build-all: build build-indexer build-bench
+
+build-bench:
+	go build -o bin/solr-mem-bench ./cmd/solr-mem-bench
+
+# Retrieval benchmark. Seeds the memories collection with namespaced bench-*
+# docs (safe to run against a live collection — only touches bench-* IDs) and
+# runs the shipped query set. Override BENCH_URL to point elsewhere.
+BENCH_URL ?= http://pax89.local:8983/solr/memories
+bench: build-bench
+	./bin/solr-mem-bench -solr-url $(BENCH_URL) -seed \
+	  -corpus cmd/solr-mem-bench/testdata/corpus.jsonl \
+	  -queries cmd/solr-mem-bench/testdata/queries.jsonl
 
 install:
 	go install ./cmd/solr-mem-server
