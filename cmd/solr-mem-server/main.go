@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/arreyder/solr-mem/internal/embed"
 	"github.com/arreyder/solr-mem/internal/solr"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var solrClient *solr.Client
 var codeClient *solr.Client
+var embedProvider embed.Provider
 
 func main() {
 	solrURL := os.Getenv("SOLR_URL")
@@ -27,6 +29,17 @@ func main() {
 		codeURL = "http://pax89.local:8983/solr/code"
 	}
 	codeClient = solr.NewClient(codeURL)
+
+	// Optional embedding provider. If no API key is set, embedProvider stays
+	// nil and the server runs in BM25-only mode.
+	if p, err := embed.FromEnv(); err != nil {
+		log.Printf("embedding provider init failed: %v (continuing BM25-only)", err)
+	} else if p != nil {
+		embedProvider = p
+		log.Printf("embedding provider: %s (dim=%d)", p.Name(), p.Dim())
+	} else {
+		log.Printf("no embedding provider configured (set OPENAI_API_KEY to enable)")
+	}
 
 	// Start expiration sweeper
 	ctx, cancel := context.WithCancel(context.Background())

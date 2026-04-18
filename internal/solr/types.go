@@ -21,6 +21,7 @@ type Document struct {
 	RelatedIDs  []string  `json:"related_ids,omitempty"`
 	Format      string    `json:"format,omitempty"`
 	ContentHash string    `json:"content_hash,omitempty"`
+	Embedding   []float32 `json:"embedding,omitempty"`
 }
 
 // QueryParams holds parameters for a Solr search query.

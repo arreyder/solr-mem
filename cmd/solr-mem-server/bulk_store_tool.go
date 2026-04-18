@@ -111,6 +111,7 @@ func bulkStoreMemoriesTool(ctx context.Context, args map[string]any) (any, error
 			RelatedIDs:  getStringSlice(m, "related_ids"),
 			Format:      format,
 			ContentHash: hash,
+			Embedding:   embedForStore(ctx, scrubbedTitle, scrubbedContent),
 		})
 	}
 
