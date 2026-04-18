@@ -109,6 +109,7 @@ func TestOpenAINameAndDim(t *testing.T) {
 }
 
 func TestFromEnvNoProvider(t *testing.T) {
+	t.Setenv("OLLAMA_EMBEDDING_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	p, err := FromEnv()
 	if err != nil {
@@ -120,6 +121,7 @@ func TestFromEnvNoProvider(t *testing.T) {
 }
 
 func TestFromEnvOpenAI(t *testing.T) {
+	t.Setenv("OLLAMA_EMBEDDING_URL", "")
 	t.Setenv("OPENAI_API_KEY", "sk-test")
 	t.Setenv("OPENAI_EMBEDDING_MODEL", "custom-model")
 	p, err := FromEnv()

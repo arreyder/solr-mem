@@ -30,15 +30,21 @@ func main() {
 	}
 	codeClient = solr.NewClient(codeURL)
 
-	// Optional embedding provider. If no API key is set, embedProvider stays
-	// nil and the server runs in BM25-only mode.
+	// Optional embedding provider. If neither OLLAMA_EMBEDDING_URL nor
+	// OPENAI_API_KEY is set, embedProvider stays nil and the server runs in
+	// BM25-only mode.
 	if p, err := embed.FromEnv(); err != nil {
 		log.Printf("embedding provider init failed: %v (continuing BM25-only)", err)
 	} else if p != nil {
 		embedProvider = p
-		log.Printf("embedding provider: %s (dim=%d)", p.Name(), p.Dim())
+		if p.Dim() > 0 {
+			log.Printf("embedding provider: %s (dim=%d)", p.Name(), p.Dim())
+		} else {
+			// Ollama's dim is learned on the first successful call.
+			log.Printf("embedding provider: %s (dim to be inferred on first call)", p.Name())
+		}
 	} else {
-		log.Printf("no embedding provider configured (set OPENAI_API_KEY to enable)")
+		log.Printf("no embedding provider configured (set OLLAMA_EMBEDDING_URL for local or OPENAI_API_KEY for managed)")
 	}
 
 	// Start expiration sweeper
