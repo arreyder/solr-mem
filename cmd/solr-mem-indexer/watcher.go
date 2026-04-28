@@ -329,5 +329,15 @@ func gitFetch(repoPath, branch string) error {
 	// Fetch the tracked branch
 	remote := strings.Split(remotes, "\n")[0]
 	cmd = exec.Command("git", "-C", repoPath, "fetch", remote, branch)
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	// Fast-forward local branch to the remote ref. Without this, gitHeadSHA
+	// keeps reading the stale local HEAD even though origin/<branch> has
+	// advanced, and IndexRepo skips with "already up to date". The mirror
+	// at repoPath is indexer-owned and never carries local commits, so a
+	// hard reset is safe and idempotent.
+	cmd = exec.Command("git", "-C", repoPath, "reset", "--hard", remote+"/"+branch)
 	return cmd.Run()
 }
