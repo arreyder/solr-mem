@@ -16,6 +16,10 @@ services:
       - solr_data:/var/solr
     environment:
       SOLR_JAVA_MEM: "-Xms1g -Xmx4g"
+    # Cap a little above the 4g JVM heap so Docker enforces a bound that leaves
+    # headroom for off-heap/metaspace/thread stacks. The host (Colima) VM must
+    # have more RAM than this (>=6g) for the limit to be backed by real memory.
+    mem_limit: 5g
     command: >-
       bash -c "precreate-core memories /opt/solr/server/solr/configsets/memories;
       precreate-core code /opt/solr/server/solr/configsets/code;
