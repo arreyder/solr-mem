@@ -18,6 +18,8 @@ var generatedFilePatterns = []string{
 	"*.pb.go",        // go protobuf (already index-skipped; belt-and-suspenders for older indexes)
 	"*.pb.gw.go",     // grpc-gateway
 	"*.pb.validate.go", // protoc-gen-validate
+	"*/pbts/*",       // generated TS protobuf tree (files named e.g. user.ts, not *_pb.ts)
+	"pbts/*",         // same, at repo root
 }
 
 // generatedExclusionFilter returns a single Solr filter query that excludes
