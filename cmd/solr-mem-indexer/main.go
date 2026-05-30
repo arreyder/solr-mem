@@ -108,6 +108,9 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	watcher := NewWatcher(indexer, cfg)
+	if cfg.ControlAddr != "" {
+		startControlServer(ctx, cfg.ControlAddr, watcher)
+	}
 	go watcher.Run(ctx)
 
 	sig := <-sigCh

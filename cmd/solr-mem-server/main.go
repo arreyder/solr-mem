@@ -15,6 +15,17 @@ import (
 var solrClient *solr.Client
 var codeClient *solr.Client
 
+// indexerControlURL is the base URL of the indexer's force-reindex control
+// endpoint. Defaults to the co-located indexer on localhost.
+var indexerControlURL = envOrDefault("INDEXER_CONTROL_URL", "http://127.0.0.1:7071")
+
+func envOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func main() {
 	solrURL := os.Getenv("SOLR_URL")
 	if solrURL == "" {

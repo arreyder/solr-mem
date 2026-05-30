@@ -26,16 +26,53 @@ type Watcher struct {
 	lastConfigState []configFileState
 	configChanged   chan struct{}
 	repoChanged     chan string // repo path that changed
+	forceReindexCh  chan string // repo path to force a full reindex (control endpoint)
 }
 
 // NewWatcher creates a new repository watcher.
 func NewWatcher(indexer *Indexer, cfg *Config) *Watcher {
 	return &Watcher{
-		indexer:       indexer,
-		cfg:           cfg,
-		configChanged: make(chan struct{}, 1),
-		repoChanged:   make(chan string, 16),
+		indexer:        indexer,
+		cfg:            cfg,
+		configChanged:  make(chan struct{}, 1),
+		repoChanged:    make(chan string, 16),
+		forceReindexCh: make(chan string, 8),
 	}
+}
+
+// RequestForceReindex enqueues a force-reindex for the given repo path. It is
+// non-blocking and safe to call from another goroutine (e.g. the control HTTP
+// server). Returns false if the queue is full.
+func (w *Watcher) RequestForceReindex(repoPath string) bool {
+	select {
+	case w.forceReindexCh <- repoPath:
+		return true
+	default:
+		return false
+	}
+}
+
+// forceReindex re-pulls and fully re-indexes a single configured repo,
+// bypassing the "already up to date" SHA check by first invalidating the repo
+// doc. Runs on the Run loop goroutine, so it is serialized with polling.
+func (w *Watcher) forceReindex(ctx context.Context, repoPath string) {
+	for _, repo := range w.cfg.Repos {
+		if repo.Path != repoPath {
+			continue
+		}
+		log.Printf("Force reindex requested for %s", repoPath)
+		if err := gitFetch(repo.Path, repo.Branch); err != nil {
+			log.Printf("Warning: git fetch failed for %s: %v", repo.Path, err)
+		}
+		if err := w.indexer.InvalidateRepo(ctx, repo); err != nil {
+			log.Printf("Warning: could not invalidate %s before reindex: %v", repo.Path, err)
+		}
+		if err := w.indexer.IndexRepo(ctx, repo); err != nil {
+			log.Printf("Error force-indexing %s: %v", repo.Path, err)
+		}
+		return
+	}
+	log.Printf("Force reindex: %q is not in the configured repo set, ignoring", repoPath)
 }
 
 // Run starts the watch loop. It blocks until the context is cancelled.
@@ -55,6 +92,8 @@ func (w *Watcher) Run(ctx context.Context) {
 			w.poll(ctx)
 		case repoPath := <-w.repoChanged:
 			w.indexSingleRepo(ctx, repoPath)
+		case repoPath := <-w.forceReindexCh:
+			w.forceReindex(ctx, repoPath)
 		case <-ticker.C:
 			w.poll(ctx)
 		}

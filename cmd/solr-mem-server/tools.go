@@ -328,6 +328,22 @@ func ToolSchemas() []ToolDefinition {
 			},
 			Handler: codeContextBundleTool,
 		},
+		{
+			Tool: &mcp.Tool{
+				Name: "force_reindex",
+				Description: `Trigger an immediate re-pull and full re-index of an indexed repository.
+
+**When to use**: When index_status / a search's repo_index shows the index is stale or behind your local checkout (indexed_commit differs from your HEAD), or right after you push changes you want searchable now — instead of waiting for the indexer's poll cycle.
+
+**What it does**: Asks the indexer to git-fetch the repo and rebuild it from scratch. A full rebuild (not incremental) also refreshes cross-references and package/repo docs. Indexing runs asynchronously in the indexer; re-check index_status or repo_index afterward.
+
+**Required**: repo_url (short name like "ductone/c1" or "ductone_c1", matched normalized, or an exact full path)`,
+				InputSchema: NewObjectSchema(map[string]any{
+					"repo_url": prop("string", "Repo to reindex: a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path. Call index_status to list indexed repos."),
+				}, "repo_url"),
+			},
+			Handler: forceReindexTool,
+		},
 	}
 }
 
