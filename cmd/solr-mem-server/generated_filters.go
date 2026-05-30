@@ -15,9 +15,10 @@ var generatedFilePatterns = []string{
 	"*_connectquery.ts", // connect-query generated clients
 	"*_pb2.py",       // python protobuf
 	"*_pb2_grpc.py",  // python grpc stubs
-	"*.pb.go",        // go protobuf (already index-skipped; belt-and-suspenders for older indexes)
-	"*.pb.gw.go",     // grpc-gateway
-	"*.pb.validate.go", // protoc-gen-validate
+	"*.pb.go",   // go protobuf base (already index-skipped; belt-and-suspenders)
+	"*.pb.*.go", // any protoc plugin output: .pb.gw.go, .pb.validate.go, .pb.authz.go, .pb.pgdb.go, …
+	"*/pbts/*",  // generated TS protobuf tree (files named e.g. user.ts, not *_pb.ts)
+	"pbts/*",    // same, at repo root
 }
 
 // generatedExclusionFilter returns a single Solr filter query that excludes
