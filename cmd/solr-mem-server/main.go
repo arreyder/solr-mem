@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/arreyder/solr-mem/internal/embed"
 	"github.com/arreyder/solr-mem/internal/solr"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var solrClient *solr.Client
 var codeClient *solr.Client
+var embedProvider embed.Provider
 
 // indexerControlURL is the base URL of the indexer's force-reindex control
 // endpoint. Defaults to the co-located indexer on localhost.
@@ -38,6 +40,23 @@ func main() {
 		codeURL = "http://pax89.local:8983/solr/code"
 	}
 	codeClient = solr.NewClient(codeURL)
+
+	// Optional embedding provider. If neither OLLAMA_EMBEDDING_URL nor
+	// OPENAI_API_KEY is set, embedProvider stays nil and the server runs in
+	// BM25-only mode.
+	if p, err := embed.FromEnv(); err != nil {
+		log.Printf("embedding provider init failed: %v (continuing BM25-only)", err)
+	} else if p != nil {
+		embedProvider = p
+		if p.Dim() > 0 {
+			log.Printf("embedding provider: %s (dim=%d)", p.Name(), p.Dim())
+		} else {
+			// Ollama's dim is learned on the first successful call.
+			log.Printf("embedding provider: %s (dim to be inferred on first call)", p.Name())
+		}
+	} else {
+		log.Printf("no embedding provider configured (set OLLAMA_EMBEDDING_URL for local or OPENAI_API_KEY for managed)")
+	}
 
 	// Start expiration sweeper
 	ctx, cancel := context.WithCancel(context.Background())

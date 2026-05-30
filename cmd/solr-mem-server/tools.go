@@ -26,25 +26,29 @@ func ToolSchemas() []ToolDefinition {
 **When to use**: Save observations, reflections, facts, conversations, tasks, or decisions for later retrieval.
 
 **Required**: content (the memory text)
-**Optional**: agent_id, memory_type, title, tags, source, importance, metadata, lifetime, session_id, related_ids, expires_at
+**Optional**: agent_id, memory_type, title, tags, source, importance, metadata, lifetime, session_id, related_ids, expires_at, format, dedup_window_seconds, on_duplicate
 
 **Lifetime values**: permanent (default, never expires), session (cleaned up with session), ephemeral (1 hour TTL), temporary (7 day TTL)
 
+**Dedup**: By default an identical memory (same title + content + tags) stored within 300 seconds is skipped and the existing ID is returned. Pass dedup_window_seconds=0 to disable, on_duplicate="merge" to bump updated_at on the existing doc, or on_duplicate="force" to always insert.
+
 **Content format**: Use compact structured formats (YAML, key-value, tables) over prose. Put searchable summary in title, machine-readable data in metadata (JSON), and categorization in tags. See server instructions for examples.`,
 				InputSchema: NewObjectSchema(map[string]any{
-					"content":     prop("string", "The main text content of the memory (required)"),
-					"agent_id":    prop("string", "ID of the agent storing this memory"),
-					"memory_type": prop("string", "Type: observation, reflection, fact, conversation, task, decision"),
-					"title":       prop("string", "Short title or summary of the memory"),
-					"tags":        arrayPropSchema(prop("string", "Tag"), "Categorization tags"),
-					"source":      prop("string", "Where this memory came from (e.g., conversation, tool, file)"),
-					"importance":  numberProp("Importance score from 0.0 to 1.0", floatPtr(0), floatPtr(1)),
-					"metadata":    prop("string", "JSON string of arbitrary metadata"),
-					"lifetime":    prop("string", "Memory lifetime: permanent (default), session, ephemeral (1h), temporary (7d)"),
-					"session_id":  prop("string", "Session/conversation ID to group memories"),
-					"related_ids": arrayPropSchema(prop("string", "ID"), "IDs of related memories"),
-					"expires_at":  prop("string", "Explicit expiration date (ISO 8601). Overrides lifetime."),
-					"format":      prop("string", "Content format: yaml, markdown, json, table, prose (default: prose). Helps agents choose parsing strategy."),
+					"content":              prop("string", "The main text content of the memory (required)"),
+					"agent_id":             prop("string", "ID of the agent storing this memory"),
+					"memory_type":          prop("string", "Type: observation, reflection, fact, conversation, task, decision"),
+					"title":                prop("string", "Short title or summary of the memory"),
+					"tags":                 arrayPropSchema(prop("string", "Tag"), "Categorization tags"),
+					"source":               prop("string", "Where this memory came from (e.g., conversation, tool, file)"),
+					"importance":           numberProp("Importance score from 0.0 to 1.0", floatPtr(0), floatPtr(1)),
+					"metadata":             prop("string", "JSON string of arbitrary metadata"),
+					"lifetime":             prop("string", "Memory lifetime: permanent (default), session, ephemeral (1h), temporary (7d)"),
+					"session_id":           prop("string", "Session/conversation ID to group memories"),
+					"related_ids":          arrayPropSchema(prop("string", "ID"), "IDs of related memories"),
+					"expires_at":           prop("string", "Explicit expiration date (ISO 8601). Overrides lifetime."),
+					"format":               prop("string", "Content format: yaml, markdown, json, table, prose (default: prose). Helps agents choose parsing strategy."),
+					"dedup_window_seconds": integerProp("Skip-if-duplicate window in seconds (default 300, 0 disables)", intPtr(0), intPtr(86400)),
+					"on_duplicate":         prop("string", "Action when a duplicate is found: skip (default), merge (bump updated_at), force (always insert)"),
 				}, "content"),
 			},
 			Handler: storeMemoryTool,
@@ -57,7 +61,9 @@ func ToolSchemas() []ToolDefinition {
 **When to use**: Find relevant memories by content, tags, type, agent, or time range. Uses edismax with field boosting (content^3, title^2, tags^1.5) and recency boost.
 
 **Required**: query (search text)
-**Optional**: agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime`,
+**Optional**: agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap, semantic, knn_topk
+
+**Semantic search**: When the server has an embedding provider configured (OPENAI_API_KEY set), results combine BM25 keyword hits with KNN vector hits via Reciprocal Rank Fusion. Pass semantic=false to force BM25-only. knn_topk widens the KNN pool before fusion (default: 3× limit).`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"query":          prop("string", "Full-text search query (required)"),
 					"agent_id":       prop("string", "Filter by agent ID"),
@@ -72,6 +78,9 @@ func ToolSchemas() []ToolDefinition {
 					"facet":          prop("boolean", "Include facet counts (default: false)"),
 					"session_id":     prop("string", "Filter by session ID"),
 					"lifetime":       prop("string", "Filter by lifetime (permanent, session, ephemeral, temporary)"),
+					"session_cap":    integerProp("Max hits per session_id after ranking (default 3, 0 = disable)", intPtr(0), intPtr(100)),
+					"semantic":       prop("boolean", "Include KNN vector stream and fuse with BM25 via RRF (default: true when an embedding provider is configured)"),
+					"knn_topk":       integerProp("KNN pool size before fusion (default: 3× limit)", intPtr(0), intPtr(500)),
 				}, "query"),
 			},
 			Handler: searchMemoriesTool,
@@ -173,9 +182,10 @@ func ToolSchemas() []ToolDefinition {
 				Name: "bulk_store_memories",
 				Description: `Store multiple memories in a single batch operation.
 
-**When to use**: Efficiently store many memories at once (e.g., importing notes, bulk archival). Each memory in the array uses the same fields as store_memory.
+**When to use**: Efficiently store many memories at once (e.g., importing notes, bulk archival). Each memory in the array uses the same fields as store_memory. Dedup parameters apply to the batch as a whole.
 
-**Required**: memories (array of memory objects, each with at least a "content" field)`,
+**Required**: memories (array of memory objects, each with at least a "content" field)
+**Optional**: dedup_window_seconds, on_duplicate`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"memories": arrayPropSchema(
 						NewObjectSchema(map[string]any{
@@ -195,6 +205,8 @@ func ToolSchemas() []ToolDefinition {
 						}, "content"),
 						"Array of memory objects to store",
 					),
+					"dedup_window_seconds": integerProp("Skip-if-duplicate window in seconds (default 300, 0 disables)", intPtr(0), intPtr(86400)),
+					"on_duplicate":         prop("string", "Action when a duplicate is found: skip (default), merge (bump updated_at), force (always insert)"),
 				}, "memories"),
 			},
 			Handler: bulkStoreMemoriesTool,

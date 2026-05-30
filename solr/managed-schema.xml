@@ -9,6 +9,20 @@
   <fieldType name="pdate" class="solr.DatePointField" docValues="true" />
   <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true" />
 
+  <!-- Dense vector field for semantic search. vectorDimension MUST match
+       your embedding provider's output dimension; set it ONCE before any
+       writes and re-upload the configset. Mismatches make Solr reject the
+       update with a dim error.
+
+       Common dimensions:
+         1536 — OpenAI text-embedding-3-small (default)
+         1024 — Ollama mxbai-embed-large, Voyage voyage-3
+          768 — Ollama nomic-embed-text
+          384 — Ollama all-minilm
+
+       cosine is the correct similarity for normalized text embeddings. -->
+  <fieldType name="knn_vector" class="solr.DenseVectorField" vectorDimension="1536" similarityFunction="cosine" />
+
   <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100">
     <analyzer type="index">
       <tokenizer class="solr.StandardTokenizerFactory"/>
@@ -48,5 +62,7 @@
   <field name="session_id" type="string" indexed="true" stored="true" />
   <field name="related_ids" type="strings" indexed="true" stored="true" multiValued="true" />
   <field name="format" type="string" indexed="true" stored="true" default="prose" />
+  <field name="content_hash" type="string" indexed="true" stored="true" />
+  <field name="embedding" type="knn_vector" indexed="true" stored="true" />
 
 </schema>
