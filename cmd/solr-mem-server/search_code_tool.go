@@ -22,8 +22,8 @@ func searchCodeTool(ctx context.Context, args map[string]any) (any, error) {
 		Facet:     getBool(args, "facet", false),
 	}
 
-	if v := getString(args, "repo_url"); v != "" {
-		params.FilterQueries = append(params.FilterQueries, fmt.Sprintf("repo_url:%q", v))
+	if fq := repoFilterQuery(getString(args, "repo_url")); fq != "" {
+		params.FilterQueries = append(params.FilterQueries, fq)
 	}
 	if v := getString(args, "language"); v != "" {
 		params.FilterQueries = append(params.FilterQueries, fmt.Sprintf("language:%q", v))

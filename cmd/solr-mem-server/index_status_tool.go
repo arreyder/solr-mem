@@ -17,8 +17,8 @@ func indexStatusTool(ctx context.Context, args map[string]any) (any, error) {
 		Rows:          50,
 	}
 
-	if v := getString(args, "repo_url"); v != "" {
-		params.FilterQueries = append(params.FilterQueries, fmt.Sprintf("repo_url:%q", v))
+	if fq := repoFilterQuery(getString(args, "repo_url")); fq != "" {
+		params.FilterQueries = append(params.FilterQueries, fq)
 	}
 
 	resp, err := codeClient.Query(ctx, params)

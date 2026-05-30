@@ -225,7 +225,7 @@ func ToolSchemas() []ToolDefinition {
 
 **Optional**: repo_url (filter to a specific repository)`,
 				InputSchema: NewObjectSchema(map[string]any{
-					"repo_url": prop("string", "Filter by repository URL/path"),
+					"repo_url": prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
 				}),
 			},
 			Handler: indexStatusTool,
@@ -244,7 +244,7 @@ func ToolSchemas() []ToolDefinition {
 **Optional**: repo_url, language, doc_level (repo/package/file/symbol), symbol_type, file_path, limit`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"query":       prop("string", "Full-text search query (required)"),
-					"repo_url":    prop("string", "Filter by repository URL/path"),
+					"repo_url":    prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
 					"language":    prop("string", "Filter by programming language (go, python, typescript, etc.)"),
 					"doc_level":   prop("string", "Filter by document level: repo, package, file, symbol"),
 					"symbol_type": prop("string", "Filter by symbol type: function, method, struct, interface, type, const, var"),
@@ -267,7 +267,7 @@ func ToolSchemas() []ToolDefinition {
 **Optional**: repo_url (narrows search), include_related (also return parent file and sibling symbols)`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"symbol_name":     prop("string", "Name of the symbol to find (required)"),
-					"repo_url":        prop("string", "Filter by repository URL/path"),
+					"repo_url":        prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
 					"language":        prop("string", "Filter by programming language"),
 					"include_related": prop("boolean", "Include parent file doc and sibling symbols (default: false)"),
 				}, "symbol_name"),
@@ -283,7 +283,7 @@ func ToolSchemas() []ToolDefinition {
 
 **Optional**: repo_url (list all repos if omitted), parent_id, file_path, doc_level, limit`,
 				InputSchema: NewObjectSchema(map[string]any{
-					"repo_url":  prop("string", "Filter by repository URL/path"),
+					"repo_url":  prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
 					"parent_id": prop("string", "List children of this document ID"),
 					"file_path": prop("string", "List symbols in this file path"),
 					"doc_level": prop("string", "Filter by level: repo, package, file, symbol"),
@@ -303,7 +303,7 @@ func ToolSchemas() []ToolDefinition {
 **Optional**: repo_url, line (returns enclosing symbol + neighbors), depth (levels of context, default: 1)`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"file_path": prop("string", "File path within the repository (required)"),
-					"repo_url":  prop("string", "Filter by repository URL/path"),
+					"repo_url":  prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
 					"line":      integerProp("Line number to get context for", intPtr(1), nil),
 					"depth":     integerProp("Levels of context to include (default: 1, max: 3)", intPtr(1), intPtr(3)),
 				}, "file_path"),
@@ -321,7 +321,7 @@ func ToolSchemas() []ToolDefinition {
 **Optional**: repo_url, include_source (default: true), depth (1=direct calls/callers, 2=transitive)`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"symbol_name":    prop("string", "Name of the symbol to get context for (required)"),
-					"repo_url":       prop("string", "Filter by repository URL/path"),
+					"repo_url":       prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
 					"include_source": prop("boolean", "Include raw source code (default: true)"),
 					"depth":          integerProp("Depth of context: 1=direct, 2=transitive (default: 1, max: 2)", intPtr(1), intPtr(2)),
 				}, "symbol_name"),

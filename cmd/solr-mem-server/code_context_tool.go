@@ -25,8 +25,8 @@ func codeContextTool(ctx context.Context, args map[string]any) (any, error) {
 
 	// Build filter queries
 	var fqs []string
-	if v := getString(args, "repo_url"); v != "" {
-		fqs = append(fqs, fmt.Sprintf("repo_url:%q", v))
+	if fq := repoFilterQuery(getString(args, "repo_url")); fq != "" {
+		fqs = append(fqs, fq)
 	}
 
 	// 1. Get the file document
