@@ -1,0 +1,25 @@
+{"id":"q-01","text":"JWT authentication middleware","gold":["bench-001"]}
+{"id":"q-02","text":"rate limiting API gateway","gold":["bench-003"]}
+{"id":"q-03","text":"Postgres connection pool sizing","gold":["bench-004"]}
+{"id":"q-04","text":"feature flag React provider","gold":["bench-005"]}
+{"id":"q-05","text":"Stripe webhook idempotency","gold":["bench-019"]}
+{"id":"q-06","text":"Kafka consumer lag alerts","gold":["bench-010"]}
+{"id":"q-07","text":"database performance optimization","gold":["bench-002","bench-011","bench-028","bench-007"]}
+{"id":"q-08","text":"secure token validation edge runtime","gold":["bench-001"]}
+{"id":"q-09","text":"fixing slow search facets on dates","gold":["bench-007"]}
+{"id":"q-10","text":"preventing duplicate payment processing","gold":["bench-019"]}
+{"id":"q-11","text":"browser preflight caching","gold":["bench-015"]}
+{"id":"q-12","text":"monitoring job duration histograms","gold":["bench-017"]}
+{"id":"q-13","text":"find related records efficiently","gold":["bench-011","bench-030"]}
+{"id":"q-14","text":"fixing a memory leak in reconnection logic","gold":["bench-006"]}
+{"id":"q-15","text":"ephemeral environments per pull request","gold":["bench-016"]}
+{"id":"q-16","text":"upload large files HTTP body limit","gold":["bench-021","bench-012"]}
+{"id":"q-17","text":"type safety migration staged rollout","gold":["bench-009"]}
+{"id":"q-18","text":"flaky tests on continuous integration","gold":["bench-014"]}
+{"id":"q-19","text":"moving from Elasticsearch","gold":["bench-018"]}
+{"id":"q-20","text":"launchd plist for a background service","gold":["bench-026"]}
+{"id":"q-21","text":"Go profiling heap allocations","gold":["bench-023"]}
+{"id":"q-22","text":"N+1 query with GraphQL resolvers","gold":["bench-011","bench-002"]}
+{"id":"q-23","text":"automatic observation capture from agent hooks","gold":["bench-029"]}
+{"id":"q-24","text":"generic repository pattern in Go","gold":["bench-013"]}
+{"id":"q-25","text":"scrubbing high-cardinality identifiers from logs","gold":["bench-024"]}

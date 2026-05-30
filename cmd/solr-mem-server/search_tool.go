@@ -74,6 +74,16 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
+	// Cap per session so one chatty session can't dominate results.
+	// Default 3; pass 0 to disable.
+	sessionCap := getInt(args, "session_cap", 3)
+	if sessionCap > 0 {
+		resp.Docs = diversifyBySession(resp.Docs, func(d map[string]any) string {
+			s, _ := d["session_id"].(string)
+			return s
+		}, sessionCap)
+	}
+
 	return ToolOutput{
 		Text:       formatSearchResults(resp),
 		Structured: resp,

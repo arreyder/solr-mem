@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/arreyder/solr-mem/internal/privacy"
 )
 
 func updateMemoryTool(ctx context.Context, args map[string]any) (any, error) {
@@ -13,12 +15,17 @@ func updateMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 	}
 
 	fields := make(map[string]any)
+	scrubHits := map[string]int{}
 
 	if v := getString(args, "content"); v != "" {
-		fields["content"] = v
+		scrubbed, hits := scrubString(v)
+		fields["content"] = scrubbed
+		scrubHits = privacy.MergeHits(scrubHits, hits)
 	}
 	if v := getString(args, "title"); v != "" {
-		fields["title"] = v
+		scrubbed, hits := scrubString(v)
+		fields["title"] = scrubbed
+		scrubHits = privacy.MergeHits(scrubHits, hits)
 	}
 	if v := getString(args, "memory_type"); v != "" {
 		fields["memory_type"] = v
@@ -34,6 +41,13 @@ func updateMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 	}
 	if v := getString(args, "metadata"); v != "" {
 		fields["metadata"] = v
+	}
+	// If secrets were scrubbed, merge the tally into metadata (existing
+	// metadata arg takes precedence over the stored doc's metadata, which
+	// matches atomic-update semantics).
+	if len(scrubHits) > 0 {
+		existing, _ := fields["metadata"].(string)
+		fields["metadata"] = privacy.MergeMetadata(existing, scrubHits)
 	}
 	if v := getString(args, "session_id"); v != "" {
 		fields["session_id"] = v
