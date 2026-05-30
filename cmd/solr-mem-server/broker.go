@@ -417,8 +417,8 @@ func (b *Broker) searchCode(ctx context.Context, obs WorkObservation) []MemoryPa
 			Rows:          3,
 			Highlight:     false,
 		}
-		if obs.Repo != "" {
-			params.FilterQueries = append(params.FilterQueries, fmt.Sprintf("repo_url:%q", obs.Repo))
+		if fq := repoFilterQuery(obs.Repo); fq != "" {
+			params.FilterQueries = append(params.FilterQueries, fq)
 		}
 
 		resp, err := b.codeClient.Query(ctx, params)
@@ -442,8 +442,8 @@ func (b *Broker) searchCode(ctx context.Context, obs WorkObservation) []MemoryPa
 			Rows:          3,
 			Highlight:     false,
 		}
-		if obs.Repo != "" {
-			params.FilterQueries = append(params.FilterQueries, fmt.Sprintf("repo_url:%q", obs.Repo))
+		if fq := repoFilterQuery(obs.Repo); fq != "" {
+			params.FilterQueries = append(params.FilterQueries, fq)
 		}
 
 		resp, err := b.codeClient.Query(ctx, params)
