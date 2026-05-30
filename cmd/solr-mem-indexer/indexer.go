@@ -72,6 +72,15 @@ func (idx *Indexer) IndexRepo(ctx context.Context, repo RepoConfig) error {
 	return nil
 }
 
+// InvalidateRepo clears the stored repo-level doc so the next IndexRepo sees no
+// last-indexed SHA and performs a fresh full index (which also rebuilds the
+// cross-reference and package/repo docs that the incremental path skips). Used
+// by the force-reindex control path.
+func (idx *Indexer) InvalidateRepo(ctx context.Context, repo RepoConfig) error {
+	repoID := shortHash(repo.Path)
+	return idx.solr.DeleteByQuery(ctx, fmt.Sprintf("repo_id:%q AND doc_level:%q", repoID, "repo"))
+}
+
 // writeStatus writes or updates a status document for a repo in the code collection.
 func (idx *Indexer) writeStatus(ctx context.Context, repoID, repoPath, commitSHA, state, message string, filesProcessed, filesTotal int) {
 	now := time.Now().UTC()

@@ -17,6 +17,7 @@ type Config struct {
 	CloneDir      string        // Where to clone/store repos
 	DefaultBranch string        // Branch to track
 	ScanDir       string        // Root directory to scan for .solr-mem.yaml files
+	ControlAddr   string        // Local address for the force-reindex control endpoint ("" / "off" disables)
 }
 
 // RepoConfig describes a single repository to index.
@@ -43,6 +44,12 @@ func LoadConfig() (*Config, error) {
 		SolrConfigDir: envOr("SOLR_CONFIG_DIR", ""),
 		CloneDir:      envOr("CLONE_DIR", "/tmp/solr-mem-repos"),
 		DefaultBranch: envOr("INDEX_BRANCH", "main"),
+		ControlAddr:   envOr("INDEXER_CONTROL_ADDR", "127.0.0.1:7071"),
+	}
+
+	// Allow explicitly disabling the control endpoint.
+	if v := strings.ToLower(cfg.ControlAddr); v == "off" || v == "disabled" || v == "none" {
+		cfg.ControlAddr = ""
 	}
 
 	// Poll interval
