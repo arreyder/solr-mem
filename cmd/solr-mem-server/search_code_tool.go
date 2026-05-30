@@ -37,6 +37,9 @@ func searchCodeTool(ctx context.Context, args map[string]any) (any, error) {
 	if v := getString(args, "file_path"); v != "" {
 		params.FilterQueries = append(params.FilterQueries, fmt.Sprintf("file_path:%q", v))
 	}
+	if fq := generatedExclusionFilter(getBool(args, "exclude_generated", false)); fq != "" {
+		params.FilterQueries = append(params.FilterQueries, fq)
+	}
 
 	if params.Facet {
 		params.FacetFields = []string{"language", "doc_level", "symbol_type", "repo_id", "package_name"}

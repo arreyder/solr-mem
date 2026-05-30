@@ -241,17 +241,18 @@ func ToolSchemas() []ToolDefinition {
 **When to use**: Find functions, types, files, or code patterns across indexed repositories. Uses code-optimized analysis with boosting (symbol_name^4, title^3, content^2).
 
 **Required**: query (search text)
-**Optional**: repo_url, language, doc_level (repo/package/file/symbol), symbol_type, file_path, limit`,
+**Optional**: repo_url, language, doc_level (repo/package/file/symbol), symbol_type, file_path, exclude_generated, limit`,
 				InputSchema: NewObjectSchema(map[string]any{
-					"query":       prop("string", "Full-text search query (required)"),
-					"repo_url":    prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
-					"language":    prop("string", "Filter by programming language (go, python, typescript, etc.)"),
-					"doc_level":   prop("string", "Filter by document level: repo, package, file, symbol"),
-					"symbol_type": prop("string", "Filter by symbol type: function, method, struct, interface, type, const, var"),
-					"file_path":   prop("string", "Filter by file path (exact match)"),
-					"limit":       integerProp("Max results (default: 10, max: 100)", intPtr(1), intPtr(100)),
-					"highlight":   prop("boolean", "Include highlighted snippets (default: true)"),
-					"facet":       prop("boolean", "Include facet counts (default: false)"),
+					"query":             prop("string", "Full-text search query (required)"),
+					"repo_url":          prop("string", "Filter by repo. Accepts a short name ('ductone/c1' or 'ductone_c1', matched normalized) or an exact full path/git URL. Omit to search all repos; call index_status to list indexed repos."),
+					"language":          prop("string", "Filter by programming language (go, python, typescript, etc.)"),
+					"doc_level":         prop("string", "Filter by document level: repo, package, file, symbol"),
+					"symbol_type":       prop("string", "Filter by symbol type: function, method, struct, interface, type, const, var"),
+					"file_path":         prop("string", "Filter by file path (exact match)"),
+					"exclude_generated": prop("boolean", "Exclude vendored (tags:vendor) and generated code (protobuf, etc.) so hand-written code isn't buried (default: false)"),
+					"limit":             integerProp("Max results (default: 10, max: 100)", intPtr(1), intPtr(100)),
+					"highlight":         prop("boolean", "Include highlighted snippets (default: true)"),
+					"facet":             prop("boolean", "Include facet counts (default: false)"),
 				}, "query"),
 			},
 			Handler: searchCodeTool,
