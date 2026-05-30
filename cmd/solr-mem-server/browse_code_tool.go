@@ -49,9 +49,10 @@ func browseCodeTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("browse failed: %w", err)
 	}
 
+	fr := repoFreshnessFromDocs(ctx, resp.Docs)
 	return ToolOutput{
-		Text:       formatBrowseResults(resp),
-		Structured: resp,
+		Text:       formatBrowseResults(resp) + freshnessText(fr),
+		Structured: codeEnvelope{QueryResponse: resp, RepoIndex: fr},
 	}, nil
 }
 

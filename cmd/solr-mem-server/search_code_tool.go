@@ -47,9 +47,10 @@ func searchCodeTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
+	fr := repoFreshnessFromDocs(ctx, resp.Docs)
 	return ToolOutput{
-		Text:       formatCodeResults(resp),
-		Structured: resp,
+		Text:       formatCodeResults(resp) + freshnessText(fr),
+		Structured: codeEnvelope{QueryResponse: resp, RepoIndex: fr},
 	}, nil
 }
 

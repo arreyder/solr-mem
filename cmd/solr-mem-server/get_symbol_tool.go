@@ -73,9 +73,11 @@ func getSymbolTool(ctx context.Context, args map[string]any) (any, error) {
 		sb.WriteString("\n")
 	}
 
+	fr := repoFreshnessFromDocs(ctx, resp.Docs)
+	sb.WriteString(freshnessText(fr))
 	return ToolOutput{
 		Text:       sb.String(),
-		Structured: resp,
+		Structured: codeEnvelope{QueryResponse: resp, RepoIndex: fr},
 	}, nil
 }
 
