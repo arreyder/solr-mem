@@ -34,21 +34,31 @@ func forceReindexTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("resolve repo failed: %w", err)
 	}
 
-	switch len(resp.Docs) {
+	// Only absolute local paths are reindexable — those are the clones the
+	// indexer manages. Drop any stale git-URL-form status docs that the
+	// normalized match also catches, so they don't create false ambiguity.
+	var docs []map[string]any
+	for _, d := range resp.Docs {
+		if strings.HasPrefix(docString(d, "repo_url"), "/") {
+			docs = append(docs, d)
+		}
+	}
+
+	switch len(docs) {
 	case 0:
-		return ToolOutput{Text: fmt.Sprintf("No indexed repo matched %q.\n%s", repoArg, knownReposHint(ctx))}, nil
+		return ToolOutput{Text: fmt.Sprintf("No reindexable repo matched %q.\n%s", repoArg, knownReposHint(ctx))}, nil
 	case 1:
 		// proceed
 	default:
 		var matches []string
-		for _, d := range resp.Docs {
+		for _, d := range docs {
 			matches = append(matches, docString(d, "repo_url"))
 		}
 		return ToolOutput{Text: fmt.Sprintf("%q matched %d repos; be more specific:\n  %s",
-			repoArg, len(resp.Docs), strings.Join(matches, "\n  "))}, nil
+			repoArg, len(docs), strings.Join(matches, "\n  "))}, nil
 	}
 
-	doc := resp.Docs[0]
+	doc := docs[0]
 	repoURL := docString(doc, "repo_url")
 	prevCommit := docString(doc, "commit_sha")
 	if len(prevCommit) > 12 {
@@ -123,9 +133,12 @@ func knownReposHint(ctx context.Context) string {
 	}
 	var urls []string
 	for _, d := range resp.Docs {
-		if u := docString(d, "repo_url"); u != "" {
+		if u := docString(d, "repo_url"); strings.HasPrefix(u, "/") {
 			urls = append(urls, u)
 		}
 	}
-	return "Indexed repos:\n  " + strings.Join(urls, "\n  ")
+	if len(urls) == 0 {
+		return ""
+	}
+	return "Reindexable repos:\n  " + strings.Join(urls, "\n  ")
 }
