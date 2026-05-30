@@ -144,10 +144,13 @@ func codeContextBundleTool(ctx context.Context, args map[string]any) (any, error
 		}
 	}
 
+	fr := repoFreshnessFromDocs(ctx, allDocs)
+	sb.WriteString(freshnessText(fr))
 	return ToolOutput{
 		Text: sb.String(),
 		Structured: map[string]any{
-			"documents": allDocs,
+			"documents":  allDocs,
+			"repo_index": fr,
 		},
 	}, nil
 }
