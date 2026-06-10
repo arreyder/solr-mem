@@ -12,6 +12,7 @@ func listMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 	params := solr.QueryParams{
 		Query:       "*:*",
 		Rows:        getInt(args, "limit", 20),
+		Start:       getInt(args, "start", 0),
 		Sort:        getString(args, "sort"),
 		Highlight:   false,
 		Facet:       true,
@@ -20,6 +21,11 @@ func listMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 
 	if params.Sort == "" {
 		params.Sort = "created_at desc"
+	}
+
+	// Optional field projection (Solr fl) for lean payloads; always keep id.
+	if fields := getStringSlice(args, "fields"); len(fields) > 0 {
+		params.Fields = ensureFields(fields, "id")
 	}
 
 	if v := getString(args, "agent_id"); v != "" {

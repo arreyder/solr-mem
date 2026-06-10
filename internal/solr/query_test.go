@@ -50,3 +50,23 @@ func TestBuildQueryString_FieldsAndStart(t *testing.T) {
 		t.Fatalf("expected no fl by default, got %q", got)
 	}
 }
+
+func TestBuildMLTValues(t *testing.T) {
+	// With a fields projection: fl is set for the RETURNED docs, while mlt.fl
+	// (the similarity field set) stays untouched.
+	v := buildMLTValues("abc", 5, nil, []string{"id", "title", "importance"})
+	if got := v.Get("fl"); got != "id,title,importance" {
+		t.Fatalf("fl: got %q", got)
+	}
+	if got := v.Get("mlt.fl"); got != "content,title,tags" {
+		t.Fatalf("mlt.fl must be unchanged, got %q", got)
+	}
+	if got := v.Get("q"); got != `id:"abc"` {
+		t.Fatalf("q: got %q", got)
+	}
+
+	// Without fields: no fl, full docs returned.
+	if got := buildMLTValues("abc", 5, nil, nil).Get("fl"); got != "" {
+		t.Fatalf("expected no fl by default, got %q", got)
+	}
+}
