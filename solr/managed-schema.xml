@@ -49,4 +49,9 @@
   <field name="related_ids" type="strings" indexed="true" stored="true" multiValued="true" />
   <field name="format" type="string" indexed="true" stored="true" default="prose" />
 
+  <!-- Retrieval feedback: how often / when a memory has actually been surfaced.
+       Drives evidence-based decay and dead-memory detection. -->
+  <field name="retrieval_count" type="plong" indexed="true" stored="true" default="0" />
+  <field name="last_retrieved_at" type="pdate" indexed="true" stored="true" />
+
 </schema>

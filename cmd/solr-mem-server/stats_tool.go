@@ -48,13 +48,33 @@ func memoryStatsTool(ctx context.Context, args map[string]any) (any, error) {
 	oldest, _ := solrClient.Query(ctx, oldestParams)
 	newest, _ := solrClient.Query(ctx, newestParams)
 
+	// Retrieval feedback: most-surfaced memories + count of never-retrieved
+	// ("dead") ones. -retrieval_count:[1 TO *] matches both 0 and missing
+	// (memories indexed before the field existed / never surfaced).
+	agentFQ := []string(nil)
+	if v := getString(args, "agent_id"); v != "" {
+		agentFQ = []string{fmt.Sprintf("agent_id:%q", v)}
+	}
+	topRetrieved, _ := solrClient.Query(ctx, solr.QueryParams{
+		Query:         "retrieval_count:[1 TO *]",
+		Rows:          5,
+		Sort:          "retrieval_count desc",
+		Fields:        []string{"id", "title", "retrieval_count", "last_retrieved_at"},
+		FilterQueries: agentFQ,
+	})
+	neverRetrieved, _ := solrClient.Query(ctx, solr.QueryParams{
+		Query:         "-retrieval_count:[1 TO *]",
+		Rows:          0,
+		FilterQueries: agentFQ,
+	})
+
 	return ToolOutput{
-		Text:       formatStats(resp, oldest, newest),
+		Text:       formatStats(resp, oldest, newest, topRetrieved, neverRetrieved),
 		Structured: resp,
 	}, nil
 }
 
-func formatStats(resp *solr.QueryResponse, oldest, newest *solr.QueryResponse) string {
+func formatStats(resp *solr.QueryResponse, oldest, newest, topRetrieved, neverRetrieved *solr.QueryResponse) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Total memories: %d\n\n", resp.NumFound))
 
@@ -71,6 +91,28 @@ func formatStats(resp *solr.QueryResponse, oldest, newest *solr.QueryResponse) s
 	}
 	sb.WriteString("\n")
 
+	// Retrieval feedback summary
+	if neverRetrieved != nil {
+		sb.WriteString(fmt.Sprintf("Never retrieved (dead): %d\n", neverRetrieved.NumFound))
+	}
+	if topRetrieved != nil && len(topRetrieved.Docs) > 0 {
+		sb.WriteString("Most retrieved:\n")
+		for _, d := range topRetrieved.Docs {
+			title, _ := d["title"].(string)
+			count := toInt(d["retrieval_count"])
+			last, _ := d["last_retrieved_at"].(string)
+			if title == "" {
+				title, _ = d["id"].(string)
+			}
+			sb.WriteString(fmt.Sprintf("  %d  %s", count, title))
+			if last != "" {
+				sb.WriteString(fmt.Sprintf("  (last %s)", last))
+			}
+			sb.WriteString("\n")
+		}
+	}
+	sb.WriteString("\n")
+
 	// Facets
 	for field, counts := range resp.Facets {
 		sb.WriteString(fmt.Sprintf("By %s:\n", field))
@@ -81,4 +123,18 @@ func formatStats(resp *solr.QueryResponse, oldest, newest *solr.QueryResponse) s
 	}
 
 	return sb.String()
+}
+
+// toInt coerces a Solr numeric field (often float64 over JSON) to int.
+func toInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
 }

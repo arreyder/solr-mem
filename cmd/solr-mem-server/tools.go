@@ -60,11 +60,14 @@ func ToolSchemas() []ToolDefinition {
 
 **Lean payloads**: Pass fields (e.g. ["id","title","importance","memory_type"]) to project only those fields and avoid returning full content bodies. Use start for pagination (offset).
 
+**Retrieval tracking**: surfaced memories get their retrieval_count bumped (feeds usage stats + evidence-based decay). Pass track=false for maintenance/bulk scans (e.g. memory consolidation) so they don't inflate the signal.
+
 **Required**: query (search text)
-**Optional**: match, fields, start, agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap`,
+**Optional**: match, fields, start, agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap, track`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"query":          prop("string", "Full-text search query (required)"),
 					"match":          prop("string", "Match mode: 'most' (default, mm 75%), 'any' (OR — any term), 'all' (every term). Use 'any' for synonym/OR-style recall."),
+					"track":          prop("boolean", "Record a retrieval for surfaced memories (default true). Set false for maintenance/bulk scans so they don't inflate usage stats."),
 					"fields":         arrayPropSchema(prop("string", "Field name"), "Project only these fields (Solr fl) for lean payloads; id is always included"),
 					"start":          integerProp("Result offset for pagination (default: 0)", intPtr(0), nil),
 					"agent_id":       prop("string", "Filter by agent ID"),
@@ -163,6 +166,7 @@ func ToolSchemas() []ToolDefinition {
 					"limit":    integerProp("Max similar results (default: 5, max: 50)", intPtr(1), intPtr(50)),
 					"agent_id": prop("string", "Filter similar results by agent ID"),
 					"fields":   arrayPropSchema(prop("string", "Field name"), "Project only these fields (Solr fl) for lean payloads; id is always included. Does not change the similarity computation (mlt.fl)."),
+					"track":    prop("boolean", "Record a retrieval for surfaced memories (default true). Set false for maintenance/bulk scans."),
 				}, "id"),
 			},
 			Handler: similarMemoriesTool,

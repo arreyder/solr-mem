@@ -212,6 +212,32 @@ func (c *Client) BulkUpdate(ctx context.Context, updates []map[string]any) error
 	return lastErr
 }
 
+// RecordRetrievals atomically bumps retrieval_count and sets last_retrieved_at
+// for the given memory IDs. Tracks which memories actually get surfaced, feeding
+// evidence-based decay and dead-memory detection. Best-effort: callers typically
+// invoke this fire-and-forget off the read path.
+func (c *Client) RecordRetrievals(ctx context.Context, ids []string, at time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return c.BulkUpdate(ctx, buildRetrievalUpdates(ids, at))
+}
+
+// buildRetrievalUpdates builds the atomic bulk-update payload that bumps
+// retrieval_count and stamps last_retrieved_at for each id.
+func buildRetrievalUpdates(ids []string, at time.Time) []map[string]any {
+	ts := at.UTC().Format(time.RFC3339)
+	updates := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		updates = append(updates, map[string]any{
+			"id":                id,
+			"retrieval_count":   map[string]any{"inc": 1},
+			"last_retrieved_at": map[string]any{"set": ts},
+		})
+	}
+	return updates
+}
+
 // Delete removes a document by ID.
 func (c *Client) Delete(ctx context.Context, id string) error {
 	payload := map[string]any{
