@@ -71,7 +71,7 @@ func main() {
 			}
 			updates = append(updates, map[string]any{
 				"id":        id,
-				"embedding": map[string]any{"set": vec},
+				"embedding1024": map[string]any{"set": vec},
 			})
 			embedded++
 		}

@@ -9,9 +9,12 @@
   <fieldType name="pdate" class="solr.DatePointField" docValues="true" />
   <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true" />
 
-  <!-- Dense vector for semantic search (cosine KNN). Dimension must match the
-       embedding model (nomic-embed-text = 768). -->
+  <!-- Dense vectors for semantic search (cosine KNN). Dimension must match the
+       embedding model. 768 = nomic-embed-text (legacy); 1024 = mxbai-embed-large
+       (current). A field can't change dimension in place, so the upgrade adds a
+       new field and points queries at it; the 768 field is left vestigial. -->
   <fieldType name="knn_vector_768" class="solr.DenseVectorField" vectorDimension="768" similarityFunction="cosine" />
+  <fieldType name="knn_vector_1024" class="solr.DenseVectorField" vectorDimension="1024" similarityFunction="cosine" />
 
   <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100">
     <analyzer type="index">
@@ -58,8 +61,10 @@
   <field name="retrieval_count" type="plong" indexed="true" stored="true" default="0" />
   <field name="last_retrieved_at" type="pdate" indexed="true" stored="true" />
 
-  <!-- Semantic embedding. stored=false so the 768-float vector never bloats
-       query responses; indexed=true powers KNN. -->
+  <!-- Semantic embedding. stored=false so the vector never bloats query
+       responses; indexed=true powers KNN. embedding=768 (legacy, vestigial),
+       embedding1024=mxbai-embed-large (current, used by search). -->
   <field name="embedding" type="knn_vector_768" indexed="true" stored="false" />
+  <field name="embedding1024" type="knn_vector_1024" indexed="true" stored="false" />
 
 </schema>
