@@ -33,6 +33,10 @@ type QueryParams struct {
 	Highlight     bool
 	Facet         bool
 	FacetFields   []string
+	// MM overrides the edismax minimum-should-match for this query. Empty
+	// leaves the request handler default (solrconfig) in place. Use "1" for
+	// OR-style recall (any term), "100%" to require all terms.
+	MM string
 }
 
 // QueryResponse holds the parsed response from a Solr search.

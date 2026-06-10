@@ -239,8 +239,11 @@ func (c *Client) Delete(ctx context.Context, id string) error {
 	return c.checkResponse(resp)
 }
 
-// MoreLikeThis finds documents similar to the given document ID.
-func (c *Client) MoreLikeThis(ctx context.Context, id string, rows int, filterQueries []string) (*QueryResponse, error) {
+// buildMLTValues builds the query params for a MoreLikeThis request.
+// fields, when non-empty, projects the RETURNED documents (Solr fl) so callers
+// can avoid pulling full content bodies. This is distinct from mlt.fl, which
+// selects the fields used to COMPUTE similarity and is left unchanged.
+func buildMLTValues(id string, rows int, filterQueries, fields []string) url.Values {
 	v := url.Values{}
 	v.Set("q", fmt.Sprintf("id:%q", id))
 	v.Set("mlt", "true")
@@ -250,11 +253,19 @@ func (c *Client) MoreLikeThis(ctx context.Context, id string, rows int, filterQu
 	v.Set("mlt.minwl", "3")
 	v.Set("rows", fmt.Sprintf("%d", rows))
 	v.Set("wt", "json")
+	if len(fields) > 0 {
+		v.Set("fl", strings.Join(fields, ","))
+	}
 	for _, fq := range filterQueries {
 		v.Add("fq", fq)
 	}
+	return v
+}
 
-	reqURL := c.baseURL + "/mlt?" + v.Encode()
+// MoreLikeThis finds documents similar to the given document ID. fields, when
+// non-empty, restricts the returned fields (Solr fl) for lean payloads.
+func (c *Client) MoreLikeThis(ctx context.Context, id string, rows int, filterQueries, fields []string) (*QueryResponse, error) {
+	reqURL := c.baseURL + "/mlt?" + buildMLTValues(id, rows, filterQueries, fields).Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err

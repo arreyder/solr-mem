@@ -21,7 +21,13 @@ func similarMemoriesTool(ctx context.Context, args map[string]any) (any, error) 
 		filterQueries = append(filterQueries, fmt.Sprintf("agent_id:%q", v))
 	}
 
-	resp, err := solrClient.MoreLikeThis(ctx, id, rows, filterQueries)
+	// Optional field projection for lean payloads; always keep id.
+	var fields []string
+	if f := getStringSlice(args, "fields"); len(f) > 0 {
+		fields = ensureFields(f, "id")
+	}
+
+	resp, err := solrClient.MoreLikeThis(ctx, id, rows, filterQueries, fields)
 	if err != nil {
 		return nil, fmt.Errorf("similar search failed: %w", err)
 	}

@@ -56,10 +56,17 @@ func ToolSchemas() []ToolDefinition {
 
 **When to use**: Find relevant memories by content, tags, type, agent, or time range. Uses edismax with field boosting (content^3, title^2, tags^1.5) and recency boost.
 
+**Match modes**: By default a query requires most terms to match (mm 75%), so a long OR-style list of synonyms can return nothing. Pass match="any" for OR-style recall (any term matches) — best when throwing several candidate terms at the store; match="all" requires every term.
+
+**Lean payloads**: Pass fields (e.g. ["id","title","importance","memory_type"]) to project only those fields and avoid returning full content bodies. Use start for pagination (offset).
+
 **Required**: query (search text)
-**Optional**: agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap`,
+**Optional**: match, fields, start, agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"query":          prop("string", "Full-text search query (required)"),
+					"match":          prop("string", "Match mode: 'most' (default, mm 75%), 'any' (OR — any term), 'all' (every term). Use 'any' for synonym/OR-style recall."),
+					"fields":         arrayPropSchema(prop("string", "Field name"), "Project only these fields (Solr fl) for lean payloads; id is always included"),
+					"start":          integerProp("Result offset for pagination (default: 0)", intPtr(0), nil),
 					"agent_id":       prop("string", "Filter by agent ID"),
 					"memory_type":    prop("string", "Filter by memory type"),
 					"tags":           arrayPropSchema(prop("string", "Tag"), "Filter by tags (AND logic)"),
@@ -125,7 +132,9 @@ func ToolSchemas() []ToolDefinition {
 
 **When to use**: Browse stored memories, get an overview of what's stored, or list memories for a specific agent, type, or session.
 
-**Optional**: agent_id, memory_type, source, session_id, lifetime, limit, sort`,
+**Lean payloads**: Pass fields (e.g. ["id","title","importance","memory_type","lifetime"]) to project only those fields and avoid returning full content bodies. Combine start + limit to page through the whole store (e.g. sort="importance asc" to find low-value memories).
+
+**Optional**: agent_id, memory_type, source, session_id, lifetime, limit, start, sort, fields`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"agent_id":    prop("string", "Filter by agent ID"),
 					"memory_type": prop("string", "Filter by memory type"),
@@ -133,7 +142,9 @@ func ToolSchemas() []ToolDefinition {
 					"session_id":  prop("string", "Filter by session ID"),
 					"lifetime":    prop("string", "Filter by lifetime"),
 					"limit":       integerProp("Max results (default: 20, max: 100)", intPtr(1), intPtr(100)),
+					"start":       integerProp("Result offset for pagination (default: 0)", intPtr(0), nil),
 					"sort":        prop("string", "Sort order (default: created_at desc). Examples: importance desc, updated_at desc"),
+					"fields":      arrayPropSchema(prop("string", "Field name"), "Project only these fields (Solr fl) for lean payloads; id is always included"),
 				}),
 			},
 			Handler: listMemoriesTool,
@@ -146,11 +157,12 @@ func ToolSchemas() []ToolDefinition {
 **When to use**: Discover related or duplicate memories based on content similarity. Does not require embeddings — uses term frequency analysis.
 
 **Required**: id (the memory to find similar ones to)
-**Optional**: limit (default 5), agent_id filter`,
+**Optional**: limit (default 5), agent_id filter, fields (project returned fields for lean payloads — does not affect which fields drive similarity)`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"id":       prop("string", "The memory ID to find similar memories for (required)"),
 					"limit":    integerProp("Max similar results (default: 5, max: 50)", intPtr(1), intPtr(50)),
 					"agent_id": prop("string", "Filter similar results by agent ID"),
+					"fields":   arrayPropSchema(prop("string", "Field name"), "Project only these fields (Solr fl) for lean payloads; id is always included. Does not change the similarity computation (mlt.fl)."),
 				}, "id"),
 			},
 			Handler: similarMemoriesTool,

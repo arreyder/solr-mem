@@ -23,6 +23,9 @@ func BuildQueryString(p QueryParams) string {
 	if p.Sort != "" {
 		v.Set("sort", p.Sort)
 	}
+	if p.MM != "" {
+		v.Set("mm", p.MM)
+	}
 	if len(p.Fields) > 0 {
 		v.Set("fl", strings.Join(p.Fields, ","))
 	}
