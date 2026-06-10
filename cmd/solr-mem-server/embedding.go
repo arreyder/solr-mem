@@ -20,7 +20,7 @@ func embedMemoryText(ctx context.Context, title, content string) []float32 {
 	if text == "" {
 		return nil
 	}
-	vec, err := embedder.Embed(ctx, text)
+	vec, err := embedder.EmbedDocument(ctx, text)
 	if err != nil {
 		log.Printf("embedding failed (proceeding without vector): %v", err)
 		return nil

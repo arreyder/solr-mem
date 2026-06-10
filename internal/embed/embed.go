@@ -14,19 +14,28 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // Embedder turns text into a dense vector. Implementations must be safe for
 // concurrent use.
+//
+// Query and document embedding are distinct because some models (e.g.
+// nomic-embed-text) are trained for asymmetric retrieval and expect different
+// task prefixes on the stored text vs. the search query. Always embed stored
+// memories with EmbedDocument and search queries with EmbedQuery so the two
+// land in the same space.
 type Embedder interface {
 	// Enabled reports whether embeddings are available. When false, callers
 	// should fall back to lexical-only behavior.
 	Enabled() bool
 	// Dim is the vector dimension (must match the Solr DenseVectorField).
 	Dim() int
-	// Embed returns the embedding for text.
-	Embed(ctx context.Context, text string) ([]float32, error)
+	// EmbedDocument embeds text to be stored/indexed.
+	EmbedDocument(ctx context.Context, text string) ([]float32, error)
+	// EmbedQuery embeds a search query.
+	EmbedQuery(ctx context.Context, text string) ([]float32, error)
 }
 
 // FromEnv builds an Embedder from EMBED_URL / EMBED_MODEL / EMBED_DIM.
@@ -52,6 +61,18 @@ func FromEnv() Embedder {
 			o.maxChars = n
 		}
 	}
+	// Task prefixes: default to nomic's for nomic models, off otherwise.
+	// EMBED_*_PREFIX env overrides either way (set to " " to force-clear).
+	if strings.Contains(strings.ToLower(model), "nomic") {
+		o.docPrefix = "search_document: "
+		o.queryPrefix = "search_query: "
+	}
+	if v, ok := os.LookupEnv("EMBED_DOC_PREFIX"); ok {
+		o.docPrefix = v
+	}
+	if v, ok := os.LookupEnv("EMBED_QUERY_PREFIX"); ok {
+		o.queryPrefix = v
+	}
 	return o
 }
 
@@ -60,17 +81,22 @@ type Disabled struct{}
 
 func (Disabled) Enabled() bool { return false }
 func (Disabled) Dim() int      { return 0 }
-func (Disabled) Embed(context.Context, string) ([]float32, error) {
+func (Disabled) EmbedDocument(context.Context, string) ([]float32, error) {
+	return nil, nil
+}
+func (Disabled) EmbedQuery(context.Context, string) ([]float32, error) {
 	return nil, nil
 }
 
 // Ollama embeds via an Ollama-compatible /api/embeddings endpoint.
 type Ollama struct {
-	baseURL  string
-	model    string
-	dim      int
-	maxChars int // truncate input to this many runes (model context guard)
-	client   *http.Client
+	baseURL     string
+	model       string
+	dim         int
+	maxChars    int    // truncate input to this many runes (model context guard)
+	docPrefix   string // task prefix for stored documents
+	queryPrefix string // task prefix for search queries
+	client      *http.Client
 }
 
 // defaultMaxChars keeps embed input under typical small-model context windows
@@ -92,7 +118,15 @@ func NewOllama(baseURL, model string, dim int) *Ollama {
 func (o *Ollama) Enabled() bool { return true }
 func (o *Ollama) Dim() int      { return o.dim }
 
-func (o *Ollama) Embed(ctx context.Context, text string) ([]float32, error) {
+func (o *Ollama) EmbedDocument(ctx context.Context, text string) ([]float32, error) {
+	return o.embed(ctx, o.docPrefix+text)
+}
+
+func (o *Ollama) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	return o.embed(ctx, o.queryPrefix+text)
+}
+
+func (o *Ollama) embed(ctx context.Context, text string) ([]float32, error) {
 	text = truncateRunes(text, o.maxChars)
 	body, err := json.Marshal(map[string]any{"model": o.model, "prompt": text})
 	if err != nil {

@@ -63,7 +63,7 @@ func main() {
 			if id == "" || text == "" {
 				continue
 			}
-			vec, err := emb.Embed(ctx, text)
+			vec, err := emb.EmbedDocument(ctx, text)
 			if err != nil || len(vec) == 0 {
 				log.Printf("embed failed id=%s: %v", id, err)
 				failed++
