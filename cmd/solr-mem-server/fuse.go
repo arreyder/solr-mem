@@ -72,8 +72,13 @@ func fuseResponses(lexical, semantic *solr.QueryResponse, limit int) *solr.Query
 
 	out := &solr.QueryResponse{Docs: docs, Highlighting: hl}
 	if lexical != nil {
-		out.NumFound = lexical.NumFound
 		out.Facets = lexical.Facets
+		out.NumFound = lexical.NumFound
+	}
+	// Don't report fewer than we're actually returning — semantic-only hits
+	// aren't counted in the lexical NumFound.
+	if len(docs) > out.NumFound {
+		out.NumFound = len(docs)
 	}
 	return out
 }
