@@ -32,6 +32,9 @@ func similarMemoriesTool(ctx context.Context, args map[string]any) (any, error) 
 		return nil, fmt.Errorf("similar search failed: %w", err)
 	}
 
+	// Credit a retrieval for surfaced docs (fire-and-forget); track:false opts out.
+	recordRetrievalsAsync(resp.Docs, getBool(args, "track", true))
+
 	return ToolOutput{
 		Text:       formatSimilarResults(id, resp),
 		Structured: resp,

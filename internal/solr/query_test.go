@@ -3,6 +3,7 @@ package solr
 import (
 	"net/url"
 	"testing"
+	"time"
 )
 
 func parseBuilt(t *testing.T, p QueryParams) url.Values {
@@ -68,5 +69,24 @@ func TestBuildMLTValues(t *testing.T) {
 	// Without fields: no fl, full docs returned.
 	if got := buildMLTValues("abc", 5, nil, nil).Get("fl"); got != "" {
 		t.Fatalf("expected no fl by default, got %q", got)
+	}
+}
+
+func TestBuildRetrievalUpdates(t *testing.T) {
+	at := time.Date(2026, 6, 10, 4, 30, 0, 0, time.UTC)
+	got := buildRetrievalUpdates([]string{"a", "b"}, at)
+	if len(got) != 2 {
+		t.Fatalf("want 2 updates, got %d", len(got))
+	}
+	first := got[0]
+	if first["id"] != "a" {
+		t.Errorf("id: got %v", first["id"])
+	}
+	if inc, ok := first["retrieval_count"].(map[string]any); !ok || inc["inc"] != 1 {
+		t.Errorf("retrieval_count must be {inc:1}, got %v", first["retrieval_count"])
+	}
+	set, ok := first["last_retrieved_at"].(map[string]any)
+	if !ok || set["set"] != "2026-06-10T04:30:00Z" {
+		t.Errorf("last_retrieved_at: got %v", first["last_retrieved_at"])
 	}
 }

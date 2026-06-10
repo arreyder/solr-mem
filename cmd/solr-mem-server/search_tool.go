@@ -93,6 +93,10 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 		}, sessionCap)
 	}
 
+	// Credit a retrieval for the memories actually surfaced (fire-and-forget).
+	// Pass track:false for maintenance/bulk scans so they don't inflate the signal.
+	recordRetrievalsAsync(resp.Docs, getBool(args, "track", true))
+
 	return ToolOutput{
 		Text:       formatSearchResults(resp),
 		Structured: resp,
