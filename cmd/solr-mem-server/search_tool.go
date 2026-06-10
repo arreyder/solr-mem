@@ -18,8 +18,17 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 	params := solr.QueryParams{
 		Query:     query,
 		Rows:      getInt(args, "limit", 10),
+		Start:     getInt(args, "start", 0),
 		Highlight: getBool(args, "highlight", true),
 		Facet:     getBool(args, "facet", false),
+		MM:        matchToMM(getString(args, "match")),
+	}
+
+	// Optional field projection (Solr fl) for lean payloads. We always keep
+	// id (highlighting key) and, when session-capping, session_id, so internal
+	// post-processing still works no matter what the caller asked for.
+	if fields := getStringSlice(args, "fields"); len(fields) > 0 {
+		params.Fields = ensureFields(fields, "id", "session_id")
 	}
 
 	// Build filter queries
@@ -88,6 +97,47 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 		Text:       formatSearchResults(resp),
 		Structured: resp,
 	}, nil
+}
+
+// matchToMM maps a friendly match mode to a Solr minimum-should-match value.
+// Empty (or "most") leaves the request-handler default (75% in solrconfig)
+// untouched. "any" gives OR-style recall (any term may match); "all" requires
+// every term. This lets a synonym/OR-style query (e.g. several candidate terms)
+// actually return hits instead of being silently dropped by the 75% default.
+func matchToMM(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "any", "or":
+		return "1"
+	case "all", "and":
+		return "100%"
+	default: // "", "most" — keep the solrconfig default
+		return ""
+	}
+}
+
+// ensureFields returns the requested fields with required ones appended if the
+// caller omitted them, preserving order and avoiding duplicates.
+func ensureFields(requested []string, required ...string) []string {
+	have := make(map[string]struct{}, len(requested))
+	out := make([]string, 0, len(requested)+len(required))
+	for _, f := range requested {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		if _, ok := have[f]; ok {
+			continue
+		}
+		have[f] = struct{}{}
+		out = append(out, f)
+	}
+	for _, f := range required {
+		if _, ok := have[f]; !ok {
+			have[f] = struct{}{}
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func formatSearchResults(resp *solr.QueryResponse) string {

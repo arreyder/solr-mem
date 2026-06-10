@@ -56,10 +56,17 @@ func ToolSchemas() []ToolDefinition {
 
 **When to use**: Find relevant memories by content, tags, type, agent, or time range. Uses edismax with field boosting (content^3, title^2, tags^1.5) and recency boost.
 
+**Match modes**: By default a query requires most terms to match (mm 75%), so a long OR-style list of synonyms can return nothing. Pass match="any" for OR-style recall (any term matches) — best when throwing several candidate terms at the store; match="all" requires every term.
+
+**Lean payloads**: Pass fields (e.g. ["id","title","importance","memory_type"]) to project only those fields and avoid returning full content bodies. Use start for pagination (offset).
+
 **Required**: query (search text)
-**Optional**: agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap`,
+**Optional**: match, fields, start, agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"query":          prop("string", "Full-text search query (required)"),
+					"match":          prop("string", "Match mode: 'most' (default, mm 75%), 'any' (OR — any term), 'all' (every term). Use 'any' for synonym/OR-style recall."),
+					"fields":         arrayPropSchema(prop("string", "Field name"), "Project only these fields (Solr fl) for lean payloads; id is always included"),
+					"start":          integerProp("Result offset for pagination (default: 0)", intPtr(0), nil),
 					"agent_id":       prop("string", "Filter by agent ID"),
 					"memory_type":    prop("string", "Filter by memory type"),
 					"tags":           arrayPropSchema(prop("string", "Tag"), "Filter by tags (AND logic)"),
