@@ -319,6 +319,13 @@ func (c *Client) MoreLikeThis(ctx context.Context, id string, rows int, filterQu
 func (c *Client) KNNQuery(ctx context.Context, field string, vec []float32, topK int, filterQueries, fields []string) (*QueryResponse, error) {
 	form := url.Values{}
 	form.Set("q", fmt.Sprintf("{!knn f=%s topK=%d}%s", field, topK, formatVector(vec)))
+	// Force the lucene parser: the /select handler defaults to edismax, which
+	// does NOT honor the leading {!knn} parser switch and would tokenize the
+	// vector literal as text (blowing maxClauseCount). Also drop the handler's
+	// facet/highlight/recency-boost defaults — irrelevant to a KNN sub-query.
+	form.Set("defType", "lucene")
+	form.Set("facet", "false")
+	form.Set("hl", "off")
 	form.Set("rows", strconv.Itoa(topK))
 	form.Set("wt", "json")
 	if len(fields) > 0 {
