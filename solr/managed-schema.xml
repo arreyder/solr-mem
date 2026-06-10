@@ -62,8 +62,10 @@
   <field name="last_retrieved_at" type="pdate" indexed="true" stored="true" />
 
   <!-- Semantic embedding. stored=false so the vector never bloats query
-       responses; indexed=true powers KNN. embedding=768 (legacy, vestigial),
-       embedding1024=mxbai-embed-large (current, used by search). -->
+       responses; indexed=true powers KNN. embedding=768/nomic-embed-text
+       (current, used by search — its 2048-tok context fits our memories).
+       embedding1024=mxbai-embed-large (vestigial: 512-tok context truncated too
+       hard on this corpus; kept defined so existing data doesn't break reload). -->
   <field name="embedding" type="knn_vector_768" indexed="true" stored="false" />
   <field name="embedding1024" type="knn_vector_1024" indexed="true" stored="false" />
 

@@ -91,7 +91,7 @@ func updateMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 			}
 		}
 		if vec := embedMemoryText(ctx, newTitle, newContent); vec != nil {
-			fields["embedding1024"] = vec
+			fields["embedding"] = vec
 		}
 	}
 

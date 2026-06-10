@@ -104,7 +104,7 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 		if vec, eerr := embedder.EmbedQuery(ctx, query); eerr != nil {
 			log.Printf("query embedding failed (lexical-only): %v", eerr)
 		} else if len(vec) > 0 {
-			knn, kerr := solrClient.KNNQuery(ctx, "embedding1024", vec, fusionK, params.FilterQueries, params.Fields)
+			knn, kerr := solrClient.KNNQuery(ctx, "embedding", vec, fusionK, params.FilterQueries, params.Fields)
 			if kerr != nil {
 				log.Printf("knn search failed (lexical-only): %v", kerr)
 			} else {
