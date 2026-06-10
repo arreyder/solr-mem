@@ -49,6 +49,22 @@ func TestOllamaEmbed(t *testing.T) {
 	}
 }
 
+func TestTruncateRunes(t *testing.T) {
+	if got := truncateRunes("hello", 3); got != "hel" {
+		t.Errorf("got %q", got)
+	}
+	if got := truncateRunes("hi", 10); got != "hi" {
+		t.Errorf("no-trunc got %q", got)
+	}
+	if got := truncateRunes("hello", 0); got != "hello" {
+		t.Errorf("max<=0 must be no-op, got %q", got)
+	}
+	// multi-byte safe
+	if got := truncateRunes("héllo", 2); got != "hé" {
+		t.Errorf("utf8 got %q", got)
+	}
+}
+
 func TestParseEmbeddingDimMismatch(t *testing.T) {
 	if _, err := parseEmbedding(strings.NewReader(`{"embedding":[1,2]}`), 3); err == nil {
 		t.Fatal("expected dim-mismatch error")

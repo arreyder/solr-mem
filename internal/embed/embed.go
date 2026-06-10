@@ -46,7 +46,13 @@ func FromEnv() Embedder {
 			dim = n
 		}
 	}
-	return NewOllama(url, model, dim)
+	o := NewOllama(url, model, dim)
+	if v := os.Getenv("EMBED_MAX_CHARS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			o.maxChars = n
+		}
+	}
+	return o
 }
 
 // Disabled is a no-op embedder used when no backend is configured.
@@ -60,20 +66,26 @@ func (Disabled) Embed(context.Context, string) ([]float32, error) {
 
 // Ollama embeds via an Ollama-compatible /api/embeddings endpoint.
 type Ollama struct {
-	baseURL string
-	model   string
-	dim     int
-	client  *http.Client
+	baseURL  string
+	model    string
+	dim      int
+	maxChars int // truncate input to this many runes (model context guard)
+	client   *http.Client
 }
+
+// defaultMaxChars keeps embed input under typical small-model context windows
+// (nomic-embed-text ~2048 tokens). Conservative at ~4 chars/token.
+const defaultMaxChars = 6000
 
 // NewOllama builds an Ollama embedder. baseURL is the host root, e.g.
 // "http://pax99.local:11434".
 func NewOllama(baseURL, model string, dim int) *Ollama {
 	return &Ollama{
-		baseURL: baseURL,
-		model:   model,
-		dim:     dim,
-		client:  &http.Client{Timeout: 30 * time.Second},
+		baseURL:  baseURL,
+		model:    model,
+		dim:      dim,
+		maxChars: defaultMaxChars,
+		client:   &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -81,6 +93,7 @@ func (o *Ollama) Enabled() bool { return true }
 func (o *Ollama) Dim() int      { return o.dim }
 
 func (o *Ollama) Embed(ctx context.Context, text string) ([]float32, error) {
+	text = truncateRunes(text, o.maxChars)
 	body, err := json.Marshal(map[string]any{"model": o.model, "prompt": text})
 	if err != nil {
 		return nil, err
@@ -102,6 +115,18 @@ func (o *Ollama) Embed(ctx context.Context, text string) ([]float32, error) {
 		return nil, fmt.Errorf("embed returned %d: %s", resp.StatusCode, b)
 	}
 	return parseEmbedding(resp.Body, o.dim)
+}
+
+// truncateRunes caps s to at most max runes (UTF-8 safe). max<=0 means no cap.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
 }
 
 // parseEmbedding decodes an Ollama embeddings response and validates the
