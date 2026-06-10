@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -309,6 +310,54 @@ func (c *Client) MoreLikeThis(ctx context.Context, id string, rows int, filterQu
 	}
 
 	return ParseQueryResponse(resp.Body)
+}
+
+// KNNQuery runs an approximate-nearest-neighbor search over a dense vector
+// field. The query is POSTed (not GET) because the vector text can exceed URL
+// length limits. Returns docs in similarity order. filterQueries are applied as
+// pre-filters; fields projects the returned docs.
+func (c *Client) KNNQuery(ctx context.Context, field string, vec []float32, topK int, filterQueries, fields []string) (*QueryResponse, error) {
+	form := url.Values{}
+	form.Set("q", fmt.Sprintf("{!knn f=%s topK=%d}%s", field, topK, formatVector(vec)))
+	form.Set("rows", strconv.Itoa(topK))
+	form.Set("wt", "json")
+	if len(fields) > 0 {
+		form.Set("fl", strings.Join(fields, ","))
+	}
+	for _, fq := range filterQueries {
+		form.Add("fq", fq)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/select", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("solr knn: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := c.checkResponse(resp); err != nil {
+		return nil, err
+	}
+	return ParseQueryResponse(resp.Body)
+}
+
+// formatVector renders a float vector as Solr's "[a,b,c]" literal.
+func formatVector(vec []float32) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, f := range vec {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(strconv.FormatFloat(float64(f), 'g', -1, 32))
+	}
+	b.WriteByte(']')
+	return b.String()
 }
 
 // DeleteByQuery removes all documents matching the given query.

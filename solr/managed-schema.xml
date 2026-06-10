@@ -9,6 +9,10 @@
   <fieldType name="pdate" class="solr.DatePointField" docValues="true" />
   <fieldType name="boolean" class="solr.BoolField" sortMissingLast="true" />
 
+  <!-- Dense vector for semantic search (cosine KNN). Dimension must match the
+       embedding model (nomic-embed-text = 768). -->
+  <fieldType name="knn_vector_768" class="solr.DenseVectorField" vectorDimension="768" similarityFunction="cosine" />
+
   <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100">
     <analyzer type="index">
       <tokenizer class="solr.StandardTokenizerFactory"/>
@@ -53,5 +57,9 @@
        Drives evidence-based decay and dead-memory detection. -->
   <field name="retrieval_count" type="plong" indexed="true" stored="true" default="0" />
   <field name="last_retrieved_at" type="pdate" indexed="true" stored="true" />
+
+  <!-- Semantic embedding. stored=false so the 768-float vector never bloats
+       query responses; indexed=true powers KNN. -->
+  <field name="embedding" type="knn_vector_768" indexed="true" stored="false" />
 
 </schema>

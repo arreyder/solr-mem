@@ -8,12 +8,17 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/arreyder/solr-mem/internal/embed"
 	"github.com/arreyder/solr-mem/internal/solr"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 var solrClient *solr.Client
 var codeClient *solr.Client
+
+// embedder produces query/document embeddings for semantic search. Disabled
+// (lexical-only) unless EMBED_URL is configured.
+var embedder embed.Embedder = embed.Disabled{}
 
 // indexerControlURL is the base URL of the indexer's force-reindex control
 // endpoint. Defaults to the co-located indexer on localhost.
@@ -38,6 +43,13 @@ func main() {
 		codeURL = "http://pax89.local:8983/solr/code"
 	}
 	codeClient = solr.NewClient(codeURL)
+
+	embedder = embed.FromEnv()
+	if embedder.Enabled() {
+		log.Printf("Semantic search enabled: embeddings via %s (dim %d)", os.Getenv("EMBED_URL"), embedder.Dim())
+	} else {
+		log.Printf("Semantic search disabled (EMBED_URL unset); lexical-only")
+	}
 
 	// Start expiration sweeper
 	ctx, cancel := context.WithCancel(context.Background())

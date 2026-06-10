@@ -1,0 +1,123 @@
+// Package embed provides text embeddings for semantic memory search.
+//
+// The default backend is an Ollama-compatible HTTP endpoint. When no endpoint
+// is configured the package returns a disabled embedder, so the rest of the
+// system degrades gracefully to lexical-only search instead of failing.
+package embed
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+)
+
+// Embedder turns text into a dense vector. Implementations must be safe for
+// concurrent use.
+type Embedder interface {
+	// Enabled reports whether embeddings are available. When false, callers
+	// should fall back to lexical-only behavior.
+	Enabled() bool
+	// Dim is the vector dimension (must match the Solr DenseVectorField).
+	Dim() int
+	// Embed returns the embedding for text.
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
+
+// FromEnv builds an Embedder from EMBED_URL / EMBED_MODEL / EMBED_DIM.
+// If EMBED_URL is empty, returns a disabled embedder (semantic search off).
+func FromEnv() Embedder {
+	url := os.Getenv("EMBED_URL")
+	if url == "" {
+		return Disabled{}
+	}
+	model := os.Getenv("EMBED_MODEL")
+	if model == "" {
+		model = "nomic-embed-text"
+	}
+	dim := 768
+	if v := os.Getenv("EMBED_DIM"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			dim = n
+		}
+	}
+	return NewOllama(url, model, dim)
+}
+
+// Disabled is a no-op embedder used when no backend is configured.
+type Disabled struct{}
+
+func (Disabled) Enabled() bool { return false }
+func (Disabled) Dim() int      { return 0 }
+func (Disabled) Embed(context.Context, string) ([]float32, error) {
+	return nil, nil
+}
+
+// Ollama embeds via an Ollama-compatible /api/embeddings endpoint.
+type Ollama struct {
+	baseURL string
+	model   string
+	dim     int
+	client  *http.Client
+}
+
+// NewOllama builds an Ollama embedder. baseURL is the host root, e.g.
+// "http://pax99.local:11434".
+func NewOllama(baseURL, model string, dim int) *Ollama {
+	return &Ollama{
+		baseURL: baseURL,
+		model:   model,
+		dim:     dim,
+		client:  &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (o *Ollama) Enabled() bool { return true }
+func (o *Ollama) Dim() int      { return o.dim }
+
+func (o *Ollama) Embed(ctx context.Context, text string) ([]float32, error) {
+	body, err := json.Marshal(map[string]any{"model": o.model, "prompt": text})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		o.baseURL+"/api/embeddings", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("embed request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("embed returned %d: %s", resp.StatusCode, b)
+	}
+	return parseEmbedding(resp.Body, o.dim)
+}
+
+// parseEmbedding decodes an Ollama embeddings response and validates the
+// dimension. Split out for testing.
+func parseEmbedding(r io.Reader, wantDim int) ([]float32, error) {
+	var out struct {
+		Embedding []float32 `json:"embedding"`
+	}
+	if err := json.NewDecoder(r).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode embedding: %w", err)
+	}
+	if len(out.Embedding) == 0 {
+		return nil, fmt.Errorf("embedding response had no vector")
+	}
+	if wantDim > 0 && len(out.Embedding) != wantDim {
+		return nil, fmt.Errorf("embedding dim %d != expected %d", len(out.Embedding), wantDim)
+	}
+	return out.Embedding, nil
+}

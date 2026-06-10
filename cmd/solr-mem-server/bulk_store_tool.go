@@ -78,6 +78,7 @@ func bulkStoreMemoriesTool(ctx context.Context, args map[string]any) (any, error
 			SessionID:  getString(m, "session_id"),
 			RelatedIDs: getStringSlice(m, "related_ids"),
 			Format:     format,
+			Embedding:  embedMemoryText(ctx, scrubbedTitle, scrubbedContent),
 		})
 	}
 
