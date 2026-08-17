@@ -62,8 +62,8 @@ func (p *GoParser) Parse(filePath string, content []byte) (*FileInfo, error) {
 }
 
 func (p *GoParser) extractFunc(fset *token.FileSet, fn *ast.FuncDecl, lines []string) Symbol {
-	startLine := fset.Position(fn.Pos()).Line
-	endLine := fset.Position(fn.End()).Line
+	startLine := physicalLine(fset, fn.Pos())
+	endLine := physicalLine(fset, fn.End())
 
 	sym := Symbol{
 		Name:      fn.Name.Name,
@@ -106,8 +106,8 @@ func (p *GoParser) extractGenDecl(fset *token.FileSet, gd *ast.GenDecl, lines []
 	for _, spec := range gd.Specs {
 		switch s := spec.(type) {
 		case *ast.TypeSpec:
-			startLine := fset.Position(gd.Pos()).Line
-			endLine := fset.Position(gd.End()).Line
+			startLine := physicalLine(fset, gd.Pos())
+			endLine := physicalLine(fset, gd.End())
 
 			sym := Symbol{
 				Name:      s.Name.Name,
@@ -137,8 +137,8 @@ func (p *GoParser) extractGenDecl(fset *token.FileSet, gd *ast.GenDecl, lines []
 			syms = append(syms, sym)
 
 		case *ast.ValueSpec:
-			startLine := fset.Position(s.Pos()).Line
-			endLine := fset.Position(s.End()).Line
+			startLine := physicalLine(fset, s.Pos())
+			endLine := physicalLine(fset, s.End())
 
 			for _, name := range s.Names {
 				sym := Symbol{
@@ -570,12 +570,31 @@ func exprString(expr ast.Expr) string {
 	}
 }
 
+// physicalLine reports the line number a position occupies in the file as it
+// exists on disk, ignoring any //line directives. go/token's Position() honors
+// those directives, which can report a line far outside the file — vendored Go
+// SDK testdata contains "//line fmthello.go:999999" — and we index the physical
+// bytes, so an adjusted line number would not address the right text.
+func physicalLine(fset *token.FileSet, pos token.Pos) int {
+	return fset.PositionFor(pos, false).Line
+}
+
+// extractLines returns lines[start:end] as text, 1-indexed and inclusive of
+// end. Bounds are clamped rather than trusted: this runs over whatever source
+// happens to be vendored into a repo, and one pathological file must not take
+// down a batch indexing a million others.
 func extractLines(lines []string, start, end int) string {
 	if start < 1 {
 		start = 1
 	}
+	if start > len(lines) {
+		return ""
+	}
 	if end > len(lines) {
 		end = len(lines)
+	}
+	if end < start {
+		return ""
 	}
 	return strings.Join(lines[start-1:end], "\n")
 }
