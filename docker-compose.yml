@@ -57,6 +57,7 @@ services:
     environment:
       SOLR_URL: "http://solr:8983/solr/memories"
       SOLR_URL_CODE: "http://solr:8983/solr/code"
+      SOLR_URL_SESSIONS: "http://solr:8983/solr/omp_sessions"
     depends_on:
       solr:
         condition: service_healthy
