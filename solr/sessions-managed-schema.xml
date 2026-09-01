@@ -9,6 +9,7 @@
   <uniqueKey>id</uniqueKey>
   <field name="id" type="string" indexed="true" stored="true" required="true" />
   <field name="_version_" type="plong" indexed="true" stored="true" />
+  <field name="_text_" type="text_general" indexed="true" stored="false" multiValued="true" />
   <field name="archive_id" type="string" indexed="true" stored="true" required="true" />
   <field name="session_id" type="string" indexed="true" stored="true" required="true" />
   <field name="event_type" type="string" indexed="true" stored="true" required="true" />
@@ -24,4 +25,5 @@
   <field name="created_at" type="pdate" indexed="true" stored="true" required="true" />
   <field name="expires_at" type="pdate" indexed="true" stored="true" required="true" />
   <field name="metadata" type="text_general" indexed="false" stored="true" />
+  <copyField source="content" dest="_text_" />
 </schema>
