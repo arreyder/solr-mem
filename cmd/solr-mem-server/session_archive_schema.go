@@ -20,5 +20,17 @@ func sessionArchiveToolSchemas() []ToolDefinition {
 			}, "archive_id", "session_id", "chunks"),
 		},
 		Handler: archiveOMPSessionTool,
+	}, {
+		Tool: &mcp.Tool{
+			Name: "search_omp_session_archive",
+			Description: "Search the isolated OMP raw-session archive for offline analysis only. Archive chunks are never part of normal memory recall.",
+			InputSchema: NewObjectSchema(map[string]any{
+				"query": prop("string", "Lexical archive query"),
+				"session_id": prop("string", "Optional exact OMP session ID"),
+				"event_type": prop("string", "Optional event type"),
+				"limit": integerProp("Maximum chunks (default 20, max 100)", intPtr(1), intPtr(100)),
+			}, "query"),
+		},
+		Handler: searchOMPSessionArchiveTool,
 	}}
 }
