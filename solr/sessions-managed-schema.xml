@@ -17,6 +17,8 @@
   <field name="chunk_count" type="plong" indexed="true" stored="true" />
   <field name="content_sha256" type="string" indexed="true" stored="true" />
   <field name="content" type="text_general" indexed="true" stored="true" />
+  <field name="title" type="text_general" indexed="true" stored="true" />
+  <field name="tags" type="string" indexed="true" stored="true" multiValued="true" />
   <field name="host" type="string" indexed="true" stored="true" />
   <field name="cwd" type="string" indexed="true" stored="true" />
   <field name="repo_origin" type="string" indexed="true" stored="true" />
