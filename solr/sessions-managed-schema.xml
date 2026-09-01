@@ -19,6 +19,9 @@
   <field name="content" type="text_general" indexed="true" stored="true" />
   <field name="title" type="text_general" indexed="true" stored="true" />
   <field name="tags" type="string" indexed="true" stored="true" multiValued="true" />
+  <field name="memory_type" type="string" indexed="true" stored="true" />
+  <field name="agent_id" type="string" indexed="true" stored="true" />
+  <field name="source" type="string" indexed="true" stored="true" />
   <field name="host" type="string" indexed="true" stored="true" />
   <field name="cwd" type="string" indexed="true" stored="true" />
   <field name="repo_origin" type="string" indexed="true" stored="true" />
