@@ -16,6 +16,20 @@ services:
       - ./solr/sessions-managed-schema.xml:/opt/solr/server/solr/configsets/omp_sessions/conf/managed-schema.xml
       - ./solr/solrconfig.xml:/opt/solr/server/solr/configsets/omp_sessions/conf/solrconfig.xml
       - solr_data:/var/solr
+      # Solr resolves `configSet=<name>` against $SOLR_HOME/configsets, i.e.
+      # /var/solr/data/configsets — NOT the /opt/solr configsets above, which
+      # only feed precreate-core. Without these, any CoreAdmin CREATE that names
+      # a configSet fails with "Could not load configuration from directory".
+      - ./solr/managed-schema.xml:/var/solr/data/configsets/memories/conf/managed-schema.xml
+      - ./solr/solrconfig.xml:/var/solr/data/configsets/memories/conf/solrconfig.xml
+      - ./solr/stopwords.txt:/var/solr/data/configsets/memories/conf/stopwords.txt
+      - ./solr/synonyms.txt:/var/solr/data/configsets/memories/conf/synonyms.txt
+      - ./solr/code-managed-schema.xml:/var/solr/data/configsets/code/conf/managed-schema.xml
+      - ./solr/code-solrconfig.xml:/var/solr/data/configsets/code/conf/solrconfig.xml
+      - ./solr/stopwords.txt:/var/solr/data/configsets/code/conf/stopwords.txt
+      - ./solr/synonyms.txt:/var/solr/data/configsets/code/conf/synonyms.txt
+      - ./solr/sessions-managed-schema.xml:/var/solr/data/configsets/omp_sessions/conf/managed-schema.xml
+      - ./solr/solrconfig.xml:/var/solr/data/configsets/omp_sessions/conf/solrconfig.xml
     environment:
       SOLR_JAVA_MEM: "-Xms1g -Xmx4g"
     # Cap a little above the 4g JVM heap so Docker enforces a bound that leaves
