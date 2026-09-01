@@ -13,6 +13,7 @@ services:
       - ./solr/code-solrconfig.xml:/opt/solr/server/solr/configsets/code/conf/solrconfig.xml
       - ./solr/stopwords.txt:/opt/solr/server/solr/configsets/code/conf/stopwords.txt
       - ./solr/synonyms.txt:/opt/solr/server/solr/configsets/code/conf/synonyms.txt
+      - ./solr/sessions-managed-schema.xml:/opt/solr/server/solr/configsets/omp_sessions/conf/managed-schema.xml
       - solr_data:/var/solr
     environment:
       SOLR_JAVA_MEM: "-Xms1g -Xmx4g"
@@ -23,6 +24,7 @@ services:
     command: >-
       bash -c "precreate-core memories /opt/solr/server/solr/configsets/memories;
       precreate-core code /opt/solr/server/solr/configsets/code;
+      precreate-core omp_sessions /opt/solr/server/solr/configsets/omp_sessions;
       exec solr-foreground"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8983/solr/memories/admin/ping | grep -q OK && curl -sf http://localhost:8983/solr/code/admin/ping | grep -q OK"]

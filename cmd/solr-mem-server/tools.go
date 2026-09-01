@@ -17,7 +17,7 @@ type ToolDefinition struct {
 
 // ToolSchemas returns all tool definitions.
 func ToolSchemas() []ToolDefinition {
-	return []ToolDefinition{
+	tools := []ToolDefinition{
 		{
 			Tool: &mcp.Tool{
 				Name: "store_memory",
@@ -363,6 +363,7 @@ func ToolSchemas() []ToolDefinition {
 			Handler: forceReindexTool,
 		},
 	}
+	return append(tools, sessionArchiveToolSchemas()...)
 }
 
 // BrokerToolSchemas returns tool definitions that require a Broker instance.
