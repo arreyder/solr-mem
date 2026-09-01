@@ -15,6 +15,7 @@ import (
 
 var solrClient *solr.Client
 var codeClient *solr.Client
+var sessionArchiveClient *solr.Client
 
 // embedder produces query/document embeddings for semantic search. Disabled
 // (lexical-only) unless EMBED_URL is configured.
@@ -44,6 +45,8 @@ func main() {
 	}
 	codeClient = solr.NewClient(codeURL)
 
+	sessionArchiveClient = solr.NewClient(envOrDefault("SOLR_URL_SESSIONS", "http://pax89.local:8983/solr/omp_sessions"))
+
 	embedder = embed.FromEnv()
 	if embedder.Enabled() {
 		log.Printf("Semantic search enabled: embeddings via %s (dim %d)", os.Getenv("EMBED_URL"), embedder.Dim())
@@ -55,6 +58,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startSweeper(ctx, solrClient)
+	startSweeper(ctx, sessionArchiveClient)
 
 	// Start memory broker
 	broker := NewBroker(solrClient, codeClient)
