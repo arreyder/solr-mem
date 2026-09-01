@@ -28,6 +28,8 @@ services:
       - ./solr/code-solrconfig.xml:/var/solr/data/configsets/code/conf/solrconfig.xml
       - ./solr/stopwords.txt:/var/solr/data/configsets/code/conf/stopwords.txt
       - ./solr/synonyms.txt:/var/solr/data/configsets/code/conf/synonyms.txt
+      - ./solr/sessions-managed-schema.xml:/var/solr/data/configsets/omp_sessions/conf/managed-schema.xml
+      - ./solr/solrconfig.xml:/var/solr/data/configsets/omp_sessions/conf/solrconfig.xml
     environment:
       SOLR_JAVA_MEM: "-Xms1g -Xmx4g"
     # Cap a little above the 4g JVM heap so Docker enforces a bound that leaves
