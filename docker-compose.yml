@@ -14,6 +14,7 @@ services:
       - ./solr/stopwords.txt:/opt/solr/server/solr/configsets/code/conf/stopwords.txt
       - ./solr/synonyms.txt:/opt/solr/server/solr/configsets/code/conf/synonyms.txt
       - ./solr/sessions-managed-schema.xml:/opt/solr/server/solr/configsets/omp_sessions/conf/managed-schema.xml
+      - ./solr/solrconfig.xml:/opt/solr/server/solr/configsets/omp_sessions/conf/solrconfig.xml
       - solr_data:/var/solr
     environment:
       SOLR_JAVA_MEM: "-Xms1g -Xmx4g"
