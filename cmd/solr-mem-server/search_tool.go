@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/arreyder/solr-mem/internal/solr"
@@ -15,9 +16,22 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("query is required")
 	}
 
+	limit := getInt(args, "limit", 10)
+
+	// Hybrid semantic search: blend lexical ranking with vector KNN. On when an
+	// embedder is configured and the caller hasn't opted out. We over-fetch
+	// (fusionK) from each ranker so fusion has enough candidates, then trim to
+	// limit at the end. Pagination (start) forces lexical-only — KNN+RRF has no
+	// stable global offset.
+	semantic := embedder.Enabled() && getBool(args, "semantic", true) && getInt(args, "start", 0) == 0
+	fusionK := limit
+	if semantic && fusionK < 50 {
+		fusionK = 50
+	}
+
 	params := solr.QueryParams{
 		Query:     query,
-		Rows:      getInt(args, "limit", 10),
+		Rows:      fusionK,
 		Start:     getInt(args, "start", 0),
 		Highlight: getBool(args, "highlight", true),
 		Facet:     getBool(args, "facet", false),
@@ -83,6 +97,22 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
+	// Blend in semantic (KNN) ranking via reciprocal rank fusion. Degrades to
+	// lexical-only on any embed/KNN error so search never hard-fails on the
+	// optional path.
+	if semantic {
+		if vec, eerr := embedder.EmbedQuery(ctx, query); eerr != nil {
+			log.Printf("query embedding failed (lexical-only): %v", eerr)
+		} else if len(vec) > 0 {
+			knn, kerr := solrClient.KNNQuery(ctx, "embedding", vec, fusionK, params.FilterQueries, params.Fields)
+			if kerr != nil {
+				log.Printf("knn search failed (lexical-only): %v", kerr)
+			} else {
+				resp = fuseResponses(resp, knn, fusionK)
+			}
+		}
+	}
+
 	// Cap per session so one chatty session can't dominate results.
 	// Default 3; pass 0 to disable.
 	sessionCap := getInt(args, "session_cap", 3)
@@ -91,6 +121,11 @@ func searchMemoriesTool(ctx context.Context, args map[string]any) (any, error) {
 			s, _ := d["session_id"].(string)
 			return s
 		}, sessionCap)
+	}
+
+	// Trim to the requested limit (we over-fetched fusionK for fusion headroom).
+	if limit > 0 && len(resp.Docs) > limit {
+		resp.Docs = resp.Docs[:limit]
 	}
 
 	// Credit a retrieval for the memories actually surfaced (fire-and-forget).

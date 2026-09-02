@@ -50,6 +50,7 @@ func storeMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 		RelatedIDs: getStringSlice(args, "related_ids"),
 		Format:     format,
 	}
+	doc.Embedding = embedMemoryText(ctx, scrubbedTitle, scrubbedContent)
 
 	if err := solrClient.Add(ctx, doc); err != nil {
 		return nil, fmt.Errorf("failed to store memory: %w", err)

@@ -340,6 +340,55 @@ The indexer manages its own clones in `~/solr-mem-repos/` and polls for new comm
 
 Logs: `/tmp/solr-mem-server.log` and `/tmp/solr-mem-indexer.log`
 
+## Recovering a corrupt core
+
+An unclean shutdown (host sleep, `colima stop`, OOM kill) can truncate segment
+files mid-flush and leave a core that will not load. Solr reports it as
+`SolrCore 'code' is not available due to init failure: Error opening new
+searcher`, and `admin/cores?action=STATUS` lists the core under `initFailures`.
+
+**Do not run CoreAdmin CREATE against a core in this state.** Solr deletes the
+`core.properties` of a failed CREATE, which unregisters the core and orphans a
+perfectly recoverable index on disk. `EnsureCollection` checks STATUS and
+refuses for this reason; a hand-run `curl` has no such guard.
+
+Diagnose which segments are broken (read-only, safe to run anytime):
+
+```bash
+docker exec solr-mem bash -lc 'cd /opt/solr && java \
+  -cp "server/solr-webapp/webapp/WEB-INF/lib/*:server/lib/ext/*" \
+  org.apache.lucene.index.CheckIndex /var/solr/data/code/data/index -fast'
+```
+
+If it reports broken segments, drop them. This loses only the documents in
+those segments — the indexer re-adds them on its next pass:
+
+```bash
+# Stop writers first so nothing holds the index lock.
+launchctl bootout gui/$UID/com.solr-mem.indexer
+
+docker exec solr-mem bash -lc 'cd /opt/solr && java \
+  -cp "server/solr-webapp/webapp/WEB-INF/lib/*:server/lib/ext/*" \
+  org.apache.lucene.index.CheckIndex /var/solr/data/code/data/index -exorcise'
+
+# Re-register the core. instanceDir has its own conf/, so pass no configSet.
+curl "http://localhost:8983/solr/admin/cores?action=CREATE&name=code&instanceDir=code"
+
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.solr-mem.indexer.plist
+```
+
+Back up the memories core before any repair work — it is the only collection
+that cannot be rebuilt from source:
+
+```bash
+curl "http://localhost:8983/solr/memories/replication?command=backup&location=/var/solr/data&name=safety"
+```
+
+Note that a core's config lives in its own `instanceDir/conf`, copied there
+once at creation. Editing `solr/*.xml` in this repo does **not** reach an
+existing core — copy the files in and reload the core, or the core keeps
+running the config it was born with.
+
 ## Architecture
 
 ```

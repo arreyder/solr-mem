@@ -75,6 +75,26 @@ func updateMemoryTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, fmt.Errorf("no fields to update")
 	}
 
+	// Re-embed only when the semantic text (content/title) changed. Tag /
+	// importance / related_ids updates (e.g. the sleep-pass) skip this. If only
+	// one of the two changed, fetch the other so the vector reflects both.
+	newContent, contentChanged := fields["content"].(string)
+	newTitle, titleChanged := fields["title"].(string)
+	if embedder.Enabled() && (contentChanged || titleChanged) {
+		if !contentChanged || !titleChanged {
+			curTitle, curContent := currentTitleContent(ctx, id)
+			if !titleChanged {
+				newTitle = curTitle
+			}
+			if !contentChanged {
+				newContent = curContent
+			}
+		}
+		if vec := embedMemoryText(ctx, newTitle, newContent); vec != nil {
+			fields["embedding"] = vec
+		}
+	}
+
 	fields["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 
 	if err := solrClient.Update(ctx, id, fields); err != nil {

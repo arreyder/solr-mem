@@ -17,7 +17,7 @@ type ToolDefinition struct {
 
 // ToolSchemas returns all tool definitions.
 func ToolSchemas() []ToolDefinition {
-	return []ToolDefinition{
+	tools := []ToolDefinition{
 		{
 			Tool: &mcp.Tool{
 				Name: "store_memory",
@@ -56,6 +56,8 @@ func ToolSchemas() []ToolDefinition {
 
 **When to use**: Find relevant memories by content, tags, type, agent, or time range. Uses edismax with field boosting (content^3, title^2, tags^1.5) and recency boost.
 
+**Semantic (hybrid) search**: when embeddings are enabled, results blend lexical (BM25) ranking with vector similarity (KNN) via reciprocal rank fusion — so conceptually-related memories surface even with no shared words. On by default; pass semantic=false for pure lexical (exact/debugging). Ignored when start>0 (pagination is lexical-only).
+
 **Match modes**: By default a query requires most terms to match (mm 75%), so a long OR-style list of synonyms can return nothing. Pass match="any" for OR-style recall (any term matches) — best when throwing several candidate terms at the store; match="all" requires every term.
 
 **Lean payloads**: Pass fields (e.g. ["id","title","importance","memory_type"]) to project only those fields and avoid returning full content bodies. Use start for pagination (offset).
@@ -66,6 +68,7 @@ func ToolSchemas() []ToolDefinition {
 **Optional**: match, fields, start, agent_id, memory_type, tags, source, importance_min, from, to, limit, highlight, facet, session_id, lifetime, session_cap, track`,
 				InputSchema: NewObjectSchema(map[string]any{
 					"query":          prop("string", "Full-text search query (required)"),
+					"semantic":       prop("boolean", "Hybrid semantic+lexical search (default true when embeddings enabled). Set false for pure lexical/exact matching."),
 					"match":          prop("string", "Match mode: 'most' (default, mm 75%), 'any' (OR — any term), 'all' (every term). Use 'any' for synonym/OR-style recall."),
 					"track":          prop("boolean", "Record a retrieval for surfaced memories (default true). Set false for maintenance/bulk scans so they don't inflate usage stats."),
 					"fields":         arrayPropSchema(prop("string", "Field name"), "Project only these fields (Solr fl) for lean payloads; id is always included"),
@@ -363,6 +366,7 @@ func ToolSchemas() []ToolDefinition {
 			Handler: forceReindexTool,
 		},
 	}
+	return append(tools, sessionArchiveToolSchemas()...)
 }
 
 // BrokerToolSchemas returns tool definitions that require a Broker instance.

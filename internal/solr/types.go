@@ -20,6 +20,9 @@ type Document struct {
 	SessionID  string    `json:"session_id,omitempty"`
 	RelatedIDs []string  `json:"related_ids,omitempty"`
 	Format     string    `json:"format,omitempty"`
+	// Embedding is the dense semantic vector. Omitted when embeddings are
+	// disabled so the field never reaches Solr in lexical-only mode.
+	Embedding []float32 `json:"embedding,omitempty"`
 }
 
 // QueryParams holds parameters for a Solr search query.

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<schema name="omp_sessions" version="1.6">
+  <fieldType name="string" class="solr.StrField" sortMissingLast="true" docValues="true" />
+  <fieldType name="plong" class="solr.LongPointField" docValues="true" />
+  <fieldType name="pdate" class="solr.DatePointField" docValues="true" />
+  <fieldType name="text_general" class="solr.TextField" positionIncrementGap="100">
+    <analyzer><tokenizer class="solr.StandardTokenizerFactory"/><filter class="solr.LowerCaseFilterFactory"/></analyzer>
+  </fieldType>
+  <uniqueKey>id</uniqueKey>
+  <field name="id" type="string" indexed="true" stored="true" required="true" />
+  <field name="_version_" type="plong" indexed="true" stored="true" />
+  <field name="_text_" type="text_general" indexed="true" stored="false" multiValued="true" />
+  <field name="archive_id" type="string" indexed="true" stored="true" required="true" />
+  <field name="session_id" type="string" indexed="true" stored="true" required="true" />
+  <field name="event_type" type="string" indexed="true" stored="true" required="true" />
+  <field name="chunk_index" type="plong" indexed="true" stored="true" />
+  <field name="chunk_count" type="plong" indexed="true" stored="true" />
+  <field name="content_sha256" type="string" indexed="true" stored="true" />
+  <field name="content" type="text_general" indexed="true" stored="true" />
+  <field name="title" type="text_general" indexed="true" stored="true" />
+  <field name="tags" type="string" indexed="true" stored="true" multiValued="true" />
+  <field name="memory_type" type="string" indexed="true" stored="true" />
+  <field name="agent_id" type="string" indexed="true" stored="true" />
+  <field name="source" type="string" indexed="true" stored="true" />
+  <field name="lifetime" type="string" indexed="true" stored="true" />
+  <field name="importance" type="plong" indexed="true" stored="true" />
+  <field name="updated_at" type="pdate" indexed="true" stored="true" />
+  <field name="related_ids" type="string" indexed="true" stored="true" multiValued="true" />
+  <field name="format" type="string" indexed="true" stored="true" />
+  <field name="host" type="string" indexed="true" stored="true" />
+  <field name="cwd" type="string" indexed="true" stored="true" />
+  <field name="repo_origin" type="string" indexed="true" stored="true" />
+  <field name="git_head" type="string" indexed="true" stored="true" />
+  <field name="event_at" type="pdate" indexed="true" stored="true" />
+  <field name="created_at" type="pdate" indexed="true" stored="true" required="true" />
+  <field name="expires_at" type="pdate" indexed="true" stored="true" required="true" />
+  <field name="metadata" type="text_general" indexed="false" stored="true" />
+  <copyField source="content" dest="_text_" />
+</schema>

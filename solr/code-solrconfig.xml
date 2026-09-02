@@ -13,7 +13,9 @@
   <indexConfig>
     <lockType>${solr.lock.type:native}</lockType>
     <ramBufferSizeMB>256</ramBufferSizeMB>
-    <mergePolicyFactory class="solr.TieredMergePolicyFactory">
+    <!-- Fully qualified: the "solr." shorthand does not resolve for classes in
+         org.apache.solr.index, and a bad class here fails core load outright. -->
+    <mergePolicyFactory class="org.apache.solr.index.TieredMergePolicyFactory">
       <int name="maxMergeAtOnce">6</int>
       <double name="segmentsPerTier">6</double>
       <double name="forceMergeDeletesPctAllowed">5.0</double>

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -311,6 +312,61 @@ func (c *Client) MoreLikeThis(ctx context.Context, id string, rows int, filterQu
 	return ParseQueryResponse(resp.Body)
 }
 
+// KNNQuery runs an approximate-nearest-neighbor search over a dense vector
+// field. The query is POSTed (not GET) because the vector text can exceed URL
+// length limits. Returns docs in similarity order. filterQueries are applied as
+// pre-filters; fields projects the returned docs.
+func (c *Client) KNNQuery(ctx context.Context, field string, vec []float32, topK int, filterQueries, fields []string) (*QueryResponse, error) {
+	form := url.Values{}
+	form.Set("q", fmt.Sprintf("{!knn f=%s topK=%d}%s", field, topK, formatVector(vec)))
+	// Force the lucene parser: the /select handler defaults to edismax, which
+	// does NOT honor the leading {!knn} parser switch and would tokenize the
+	// vector literal as text (blowing maxClauseCount). Also drop the handler's
+	// facet/highlight/recency-boost defaults — irrelevant to a KNN sub-query.
+	form.Set("defType", "lucene")
+	form.Set("facet", "false")
+	form.Set("hl", "off")
+	form.Set("rows", strconv.Itoa(topK))
+	form.Set("wt", "json")
+	if len(fields) > 0 {
+		form.Set("fl", strings.Join(fields, ","))
+	}
+	for _, fq := range filterQueries {
+		form.Add("fq", fq)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+"/select", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("solr knn: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := c.checkResponse(resp); err != nil {
+		return nil, err
+	}
+	return ParseQueryResponse(resp.Body)
+}
+
+// formatVector renders a float vector as Solr's "[a,b,c]" literal.
+func formatVector(vec []float32) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, f := range vec {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(strconv.FormatFloat(float64(f), 'g', -1, 32))
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
 // DeleteByQuery removes all documents matching the given query.
 func (c *Client) DeleteByQuery(ctx context.Context, query string) error {
 	payload := map[string]any{
@@ -338,9 +394,69 @@ func (c *Client) DeleteByQuery(ctx context.Context, query string) error {
 	return c.checkResponse(resp)
 }
 
+// coreState describes what Solr knows about a core: whether it is registered,
+// and whether it is registered but broken.
+type coreState struct {
+	exists     bool
+	initFailed bool
+	initError  string
+}
+
+// coreStatus asks the CoreAdmin API about a single core. A core that Solr has
+// never heard of comes back as an empty status entry; a core whose index or
+// config is broken comes back under initFailures. The two cases need very
+// different handling, so they are reported separately.
+func (c *Client) coreStatus(ctx context.Context, solrBase, core string) (coreState, error) {
+	statusURL := fmt.Sprintf("%s/solr/admin/cores?action=STATUS&core=%s&wt=json",
+		solrBase, url.QueryEscape(core))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
+	if err != nil {
+		return coreState{}, fmt.Errorf("core status request: %w", err)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return coreState{}, fmt.Errorf("core status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return coreState{}, fmt.Errorf("core status returned %d: %s", resp.StatusCode, body)
+	}
+
+	var out struct {
+		InitFailures map[string]json.RawMessage `json:"initFailures"`
+		Status       map[string]struct {
+			Name        string `json:"name"`
+			InstanceDir string `json:"instanceDir"`
+		} `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return coreState{}, fmt.Errorf("decode core status: %w", err)
+	}
+
+	state := coreState{}
+	if raw, ok := out.InitFailures[core]; ok {
+		state.initFailed = true
+		state.initError = strings.Trim(string(raw), `"`)
+	}
+	if st, ok := out.Status[core]; ok && st.Name != "" {
+		state.exists = true
+	}
+	return state, nil
+}
+
 // EnsureCollection creates the Solr collection if it doesn't already exist.
 // It uses the configDir to upload the schema/config files.
 // baseURL should be like "http://host:8983/solr/code" — the collection name is extracted from the path.
+//
+// A failing ping is not on its own proof that the core is missing: a core whose
+// index is corrupt answers every request with a 500 while its data sits intact
+// on disk. Issuing CREATE against that core makes things strictly worse —
+// Solr deletes the core.properties of a failed CREATE, which unregisters the
+// core entirely and leaves the index orphaned. So we check CoreAdmin STATUS
+// and only CREATE a core Solr has genuinely never heard of.
 func (c *Client) EnsureCollection(ctx context.Context, configDir string) error {
 	// Check if collection already exists via ping
 	if err := c.Ping(ctx); err == nil {
@@ -354,6 +470,21 @@ func (c *Client) EnsureCollection(ctx context.Context, configDir string) error {
 	}
 	collection := path.Base(u.Path)
 	solrBase := strings.TrimSuffix(c.baseURL, "/solr/"+collection)
+
+	state, err := c.coreStatus(ctx, solrBase, collection)
+	if err != nil {
+		return fmt.Errorf("determine state of core %s: %w", collection, err)
+	}
+	switch {
+	case state.initFailed:
+		return fmt.Errorf("core %s exists but failed to initialize: %s\n"+
+			"refusing to CREATE over it — that would delete its core.properties and orphan the index. "+
+			"Repair the core (see README: recovering a corrupt core) and reload it",
+			collection, state.initError)
+	case state.exists:
+		// Registered, but not answering ping yet — still loading or warming.
+		return nil
+	}
 
 	// Create collection using the Solr ConfigSet API + Collections API
 	// First, try creating via the core admin API (standalone mode, not SolrCloud)
