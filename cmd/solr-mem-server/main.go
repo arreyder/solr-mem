@@ -14,6 +14,7 @@ import (
 
 var solrClient *solr.Client
 var codeClient *solr.Client
+var sessionArchiveClient *solr.Client
 
 // indexerControlURL is the base URL of the indexer's force-reindex control
 // endpoint. Defaults to the co-located indexer on localhost.
@@ -39,10 +40,12 @@ func main() {
 	}
 	codeClient = solr.NewClient(codeURL)
 
+	sessionArchiveClient = solr.NewClient(envOrDefault("SOLR_URL_SESSIONS", "http://pax89.local:8983/solr/omp_sessions"))
 	// Start expiration sweeper
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startSweeper(ctx, solrClient)
+	startSweeper(ctx, sessionArchiveClient)
 
 	// Start memory broker
 	broker := NewBroker(solrClient, codeClient)
@@ -110,8 +113,11 @@ Guidelines:
 - Use bulk_store_memories when storing multiple findings at once`,
 	})
 
-	// Register standard tools.
-	for _, def := range ToolSchemas() {
+	toolDefinitions := ToolSchemas()
+	for _, def := range toolDefinitions {
+		log.Printf("Registering MCP tool %q", def.Tool.Name)
+	}
+	for _, def := range toolDefinitions {
 		def := def
 		tool := *def.Tool
 		mcp.AddTool(s, &tool, func(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
