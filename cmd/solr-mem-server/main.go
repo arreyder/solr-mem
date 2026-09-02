@@ -113,8 +113,11 @@ Guidelines:
 - Use bulk_store_memories when storing multiple findings at once`,
 	})
 
-	// Register standard tools.
-	for _, def := range ToolSchemas() {
+	toolDefinitions := ToolSchemas()
+	for _, def := range toolDefinitions {
+		log.Printf("Registering MCP tool %q", def.Tool.Name)
+	}
+	for _, def := range toolDefinitions {
 		def := def
 		tool := *def.Tool
 		mcp.AddTool(s, &tool, func(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
